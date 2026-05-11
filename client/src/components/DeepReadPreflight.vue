@@ -1,5 +1,5 @@
 <template>
-  <BaseModal :open="open" title="Start Focus Session" @close="$emit('close')">
+  <BaseModal :open="open" title="Focus Session Settings" @close="$emit('close')">
     <div class="space-y-5">
       <!-- File header -->
       <div class="flex items-center gap-3 -mt-2">
@@ -159,6 +159,7 @@
       <!-- Actions -->
       <div class="flex justify-end gap-2 pt-1">
         <button type="button" class="btn-ghost" @click="$emit('close')">Cancel</button>
+        <button type="button" class="btn-ghost" @click="onSave">Save settings</button>
         <button type="button" class="btn-primary" @click="onStart">
           Start Session
         </button>
@@ -170,17 +171,22 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import BaseModal from './BaseModal.vue'
-import {
-  loadSettings, saveSettings, loadProgress,
-  THEMES, TIMER_PRESETS,
-  type DeepReadSettings, type ReadingRulerMode
-} from '@/composables/useDeepRead'
+import { loadProgress, THEMES, TIMER_PRESETS, type DeepReadSettings, type ReadingRulerMode } from '@/composables/useDeepRead'
 import type { PDFLibraryItem } from '@/api'
 
-const props = defineProps<{ open: boolean; item: PDFLibraryItem }>()
-const emit = defineEmits<{ close: []; start: [settings: DeepReadSettings] }>()
+const props = defineProps<{
+  open: boolean
+  item: PDFLibraryItem
+  initialSettings: DeepReadSettings
+}>()
 
-const settings = ref<DeepReadSettings>(loadSettings())
+const emit = defineEmits<{
+  close: []
+  save: [settings: DeepReadSettings]
+  start: [settings: DeepReadSettings]
+}>()
+
+const settings = ref<DeepReadSettings>({ ...props.initialSettings })
 const customMode = ref(!TIMER_PRESETS.includes(settings.value.durationMin as 10 | 15 | 25 | 50))
 const resumePage = ref<number | null>(null)
 
@@ -194,12 +200,17 @@ const RULER_OPTIONS: { id: ReadingRulerMode; label: string; hint: string }[] = [
 
 watch(() => props.open, open => {
   if (!open) return
-  settings.value = loadSettings()
-  // Force annotations off when no source is attached
+  settings.value = { ...props.initialSettings }
   if (!annotationsAvailable.value) settings.value.annotations = 'off'
   customMode.value = !TIMER_PRESETS.includes(settings.value.durationMin as 10 | 15 | 25 | 50)
   const p = loadProgress(props.item.id)
   resumePage.value = p && p.lastPage > 1 ? p.lastPage : null
+})
+
+watch(() => props.initialSettings, s => {
+  settings.value = { ...s }
+  if (!annotationsAvailable.value) settings.value.annotations = 'off'
+  customMode.value = !TIMER_PRESETS.includes(settings.value.durationMin as 10 | 15 | 25 | 50)
 })
 
 function setDuration(m: number) {
@@ -207,12 +218,15 @@ function setDuration(m: number) {
   customMode.value = false
 }
 
+function clampedSettings(): DeepReadSettings {
+  return { ...settings.value, durationMin: Math.max(1, Math.min(240, settings.value.durationMin || 25)) }
+}
+
+function onSave() {
+  emit('save', clampedSettings())
+}
+
 function onStart() {
-  const s: DeepReadSettings = {
-    ...settings.value,
-    durationMin: Math.max(1, Math.min(240, settings.value.durationMin || 25))
-  }
-  saveSettings(s)
-  emit('start', s)
+  emit('start', clampedSettings())
 }
 </script>

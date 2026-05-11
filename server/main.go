@@ -122,6 +122,8 @@ func main() {
 		r.Get("/attachments/{id}/file", att.ServeFile)
 		r.Get("/attachments/{id}/progress", att.GetProgress)
 		r.Put("/attachments/{id}/progress", att.SaveProgress)
+		r.Get("/attachments/{id}/settings", att.GetFocusSettings)
+		r.Put("/attachments/{id}/settings", att.SaveFocusSettings)
 		r.Delete("/attachments/{id}", att.Delete)
 
 		// Deep Read library — read-only aggregate of every PDF

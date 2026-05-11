@@ -206,14 +206,17 @@
       </form>
     </BaseModal>
 
-    <!-- Global Deep Read pre-flight + focus session.
-         Mounted here so any view can launch them via the focus store. -->
+    <!-- Focus session settings modal.
+         Opened via focusStore.openSettings(); focus sessions launched via
+         focusStore.requestPreflight() skip this and start immediately. -->
     <DeepReadPreflight
-      v-if="focusStore.pendingPreflight"
-      :open="!!focusStore.pendingPreflight"
-      :item="focusStore.pendingPreflight.item"
-      @close="focusStore.cancelPreflight()"
-      @start="onPreflightStart"
+      v-if="focusStore.pendingSettings"
+      :open="!!focusStore.pendingSettings"
+      :item="focusStore.pendingSettings.item"
+      :initial-settings="focusStore.pendingSettings.initialSettings"
+      @close="focusStore.closeSettings()"
+      @save="onSettingsSave"
+      @start="onSettingsStart"
     />
     <DeepReadFocus
       v-if="focusStore.active"
@@ -233,7 +236,7 @@ import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSemesterStore } from '@/stores/semester'
 import { useClassStore } from '@/stores/class'
-import { useFocusStore } from '@/stores/focus'
+import { useFocusStore, settingsToAPI } from '@/stores/focus'
 import { useAuthStore } from '@/stores/auth'
 import BaseModal from './BaseModal.vue'
 import ThemeToggle from './ThemeToggle.vue'
@@ -345,8 +348,18 @@ function emitNewClass() {
 onMounted(() => window.addEventListener('app:new-semester', () => { showNewSemester.value = true }))
 // Note: no cleanup needed — AppShell lives for the full app lifetime.
 
-function onPreflightStart(settings: DeepReadSettings) {
-  focusStore.startSession(settings)
+async function onSettingsSave(settings: DeepReadSettings) {
+  if (!focusStore.pendingSettings) return
+  await api.attachments.saveFocusSettings(focusStore.pendingSettings.item.id, settingsToAPI(settings)).catch(() => {})
+  focusStore.closeSettings()
+}
+
+async function onSettingsStart(settings: DeepReadSettings) {
+  if (!focusStore.pendingSettings) return
+  const { item, returnTo } = focusStore.pendingSettings
+  await api.attachments.saveFocusSettings(item.id, settingsToAPI(settings)).catch(() => {})
+  focusStore.closeSettings()
+  focusStore.startSession(item, settings, returnTo)
 }
 
 function onSessionEnd() {

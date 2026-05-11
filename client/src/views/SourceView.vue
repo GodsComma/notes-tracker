@@ -75,17 +75,28 @@
               </select>
 
               <!-- Focus Mode (PDF only, has source) -->
-              <button
-                v-if="activePdf"
-                class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                title="Start focus session"
-                @click="startFocusOnActivePdf"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                </svg>
-                Focus Mode
-              </button>
+              <template v-if="activePdf">
+                <button
+                  class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                  title="Start focus session"
+                  @click="startFocusOnActivePdf"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                  Focus Mode
+                </button>
+                <button
+                  class="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                  title="Focus session settings"
+                  @click="openFocusSettings"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+              </template>
 
               <!-- Attachments toggle -->
               <button
@@ -280,22 +291,28 @@ watch(activePdf, (pdf) => {
   if (pdf) preloadPdf(api.attachments.fileUrl(pdf.id, 'inline'))
 })
 
+function focusItem() {
+  if (!activePdf.value || !sourceFocusContext.value) return null
+  return {
+    id: activePdf.value.id,
+    filename: activePdf.value.filename,
+    size_bytes: activePdf.value.size_bytes,
+    created_at: activePdf.value.created_at,
+    ...sourceFocusContext.value
+  }
+}
+
 async function startFocusOnActivePdf() {
-  if (!activePdf.value || !sourceFocusContext.value) return
-  // Fix 5: fire-and-forget the save — don't block focus entry on the flush.
-  // DeepReadFocus re-fetches the note fresh on mount, so state is consistent.
-  // The beforeunload handler also saves on abrupt close.
+  const item = focusItem()
+  if (!item) return
   editorStore.flushSave()
-  focusStore.requestPreflight(
-    {
-      id: activePdf.value.id,
-      filename: activePdf.value.filename,
-      size_bytes: activePdf.value.size_bytes,
-      created_at: activePdf.value.created_at,
-      ...sourceFocusContext.value
-    },
-    route.path
-  )
+  focusStore.requestPreflight(item, route.path)
+}
+
+async function openFocusSettings() {
+  const item = focusItem()
+  if (!item) return
+  focusStore.openSettings(item, route.path)
 }
 
 // Walk TipTap JSON document to extract pdfQuote nodes

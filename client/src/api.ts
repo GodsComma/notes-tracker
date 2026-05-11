@@ -126,6 +126,15 @@ export interface GradeCategory {
   sort_order: number
 }
 
+export interface FocusSettingsAPI {
+  duration_min: number
+  theme: string
+  ruler: string
+  suppress_notifications: boolean
+  annotations: string
+  auto_hide_drawer: boolean
+}
+
 export interface GradeRubric {
   id: number
   class_id: number
@@ -138,7 +147,7 @@ export interface GradeRubric {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData
-  const res = await fetch(`/api/v1/${path}`, {
+  const res = await fetch(`/api/v1${path}`, {
     ...init,
     credentials: 'include',
     headers: isFormData
@@ -245,6 +254,10 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ last_page: lastPage })
       }),
+    getFocusSettings: (id: number) =>
+      request<FocusSettingsAPI>(`/attachments/${id}/settings`),
+    saveFocusSettings: (id: number, s: FocusSettingsAPI) =>
+      request<void>(`/attachments/${id}/settings`, { method: 'PUT', body: JSON.stringify(s) }),
     delete: (id: number) =>
       request<void>(`/attachments/${id}`, { method: 'DELETE' })
   },

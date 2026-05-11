@@ -158,6 +158,15 @@ type Note struct {
 
 var ErrNoteLocked = errors.New("note is locked")
 
+type FocusSettings struct {
+	DurationMin           int    `json:"duration_min"`
+	Theme                 string `json:"theme"`
+	Ruler                 string `json:"ruler"`
+	SuppressNotifications bool   `json:"suppress_notifications"`
+	Annotations           string `json:"annotations"`
+	AutoHideDrawer        bool   `json:"auto_hide_drawer"`
+}
+
 type SearchResult struct {
 	NoteID      int64  `json:"note_id"`
 	SourceID    int64  `json:"source_id"`
@@ -1218,6 +1227,62 @@ func walkNode(node map[string]any, sb *strings.Builder) {
 		}
 		sb.WriteString("\n")
 	}
+}
+
+// --- Focus Settings ---
+
+func (d *DB) GetFocusSettings(attachmentID, userID int64) (FocusSettings, error) {
+	defaults := FocusSettings{DurationMin: 25, Theme: "default", Ruler: "off", SuppressNotifications: true, Annotations: "on", AutoHideDrawer: true}
+	// Verify ownership
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM attachments a
+		LEFT JOIN sources src ON src.id = a.source_id
+		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND s.user_id = ?`,
+		attachmentID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return defaults, sql.ErrNoRows
+	}
+	var s FocusSettings
+	err := d.sql.QueryRow(`
+		SELECT duration_min, theme, ruler, suppress_notifications, annotations, auto_hide_drawer
+		FROM attachment_focus_settings WHERE attachment_id = ?`, attachmentID,
+	).Scan(&s.DurationMin, &s.Theme, &s.Ruler, &s.SuppressNotifications, &s.Annotations, &s.AutoHideDrawer)
+	if err == sql.ErrNoRows {
+		return defaults, nil
+	}
+	return s, err
+}
+
+func (d *DB) SaveFocusSettings(attachmentID, userID int64, s FocusSettings) error {
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM attachments a
+		LEFT JOIN sources src ON src.id = a.source_id
+		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND s.user_id = ?`,
+		attachmentID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return sql.ErrNoRows
+	}
+	_, err := d.sql.Exec(`
+		INSERT INTO attachment_focus_settings
+		  (attachment_id, duration_min, theme, ruler, suppress_notifications, annotations, auto_hide_drawer, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+		ON CONFLICT(attachment_id) DO UPDATE SET
+		  duration_min           = excluded.duration_min,
+		  theme                  = excluded.theme,
+		  ruler                  = excluded.ruler,
+		  suppress_notifications = excluded.suppress_notifications,
+		  annotations            = excluded.annotations,
+		  auto_hide_drawer       = excluded.auto_hide_drawer,
+		  updated_at             = excluded.updated_at`,
+		attachmentID, s.DurationMin, s.Theme, s.Ruler, s.SuppressNotifications, s.Annotations, s.AutoHideDrawer,
+	)
+	return err
 }
 
 // --- Grades ---
