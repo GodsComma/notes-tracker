@@ -1,0 +1,840 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+/* Enable class-based dark mode for Tailwind v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── PDF anchor quote block ────────────────────────────────── */
+.pdf-quote-block {
+  @apply my-3 rounded-lg border-l-4 px-4 py-3 relative;
+  border-color: var(--pdf-quote-border, #facc15);
+  background-color: var(--pdf-quote-bg, #fefce8);
+}
+.dark .pdf-quote-block {
+  background-color: var(--pdf-quote-bg-dark, rgba(250, 204, 21, 0.08));
+}
+.pdf-quote-block[data-color="yellow"] { --pdf-quote-border: #facc15; --pdf-quote-bg: #fefce8; --pdf-quote-bg-dark: rgba(250, 204, 21, 0.08); }
+.pdf-quote-block[data-color="green"]  { --pdf-quote-border: #4ade80; --pdf-quote-bg: #f0fdf4; --pdf-quote-bg-dark: rgba(74, 222, 128, 0.08); }
+.pdf-quote-block[data-color="blue"]   { --pdf-quote-border: #60a5fa; --pdf-quote-bg: #eff6ff; --pdf-quote-bg-dark: rgba(96, 165, 250, 0.08); }
+.pdf-quote-block[data-color="pink"]   { --pdf-quote-border: #f472b6; --pdf-quote-bg: #fdf2f8; --pdf-quote-bg-dark: rgba(244, 114, 182, 0.08); }
+
+.pdf-quote-block .pdf-quote-header {
+  @apply select-none;
+}
+.pdf-quote-block .pdf-quote-text {
+  @apply text-slate-700 dark:text-slate-200 italic m-0 border-0 p-0 leading-relaxed text-sm;
+}
+.pdf-quote-block .pdf-quote-toolbar {
+  @apply mt-2 flex items-center justify-between gap-3;
+}
+.pdf-quote-block .pdf-quote-link {
+  @apply inline-flex items-center gap-1 text-xs font-medium
+         text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300
+         cursor-pointer bg-transparent border-0 p-0;
+}
+.pdf-quote-block .pdf-quote-actions {
+  @apply flex items-center gap-1.5 opacity-50 transition-opacity;
+}
+.pdf-quote-block:hover .pdf-quote-actions,
+.pdf-quote-block .pdf-quote-actions:hover,
+.pdf-quote-block.ProseMirror-selectednode .pdf-quote-actions {
+  @apply opacity-100;
+}
+.tiptap-locked .pdf-quote-actions {
+  display: none !important;
+}
+.pdf-quote-color-btn {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(100, 116, 139, 0.4);
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.pdf-quote-color-btn:hover { transform: scale(1.2); }
+.pdf-quote-color-btn-active { border-color: #1e293b; border-width: 2.5px; }
+.dark .pdf-quote-color-btn-active { border-color: #f1f5f9; }
+.pdf-quote-color-btn[data-color="yellow"] { background: #facc15; }
+.pdf-quote-color-btn[data-color="green"]  { background: #4ade80; }
+.pdf-quote-color-btn[data-color="blue"]   { background: #60a5fa; }
+.pdf-quote-color-btn[data-color="pink"]   { background: #f472b6; }
+
+.pdf-quote-delete {
+  @apply ml-1 w-5 h-5 flex items-center justify-center rounded-full
+         text-slate-400 hover:text-white hover:bg-red-500
+         text-base leading-none cursor-pointer bg-transparent border-0 p-0
+         transition-colors;
+}
+.pdf-quote-block .pdf-quote-commentary {
+  @apply mt-2 pt-2 border-t border-slate-200 dark:border-slate-700;
+}
+.pdf-quote-block .pdf-quote-commentary p {
+  @apply text-slate-800 dark:text-slate-100 my-1 leading-relaxed;
+}
+.pdf-quote-block .pdf-quote-commentary p:only-child:empty::before {
+  content: 'Add your note…';
+  @apply text-slate-400 dark:text-slate-500 italic pointer-events-none;
+}
+.pdf-quote-pulse {
+  animation: pdfQuotePulse 1.4s ease-out;
+}
+@keyframes pdfQuotePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.6); }
+  50%  { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.15); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+
+/* ─── Deep Read Focus Module ─────────────────────────────────── */
+.dr-focus {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--dr-bg, #F9F9FB);
+  color: var(--dr-fg, #1f2937);
+  user-select: text;
+}
+.dr-focus[data-theme="default"]  {
+  --dr-bg: #F9F9FB; --dr-fg: #1f2937; --dr-accent: #6366f1;
+  --dr-page-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --dr-ctrl-bg: rgba(15, 23, 42, 0.82);
+  --dr-ctrl-fg: #f1f5f9;
+  --dr-ctrl-hover: rgba(255, 255, 255, 0.12);
+}
+.dr-focus[data-theme="sepia"]    {
+  --dr-bg: #F4ECD8; --dr-fg: #4a3520; --dr-accent: #b07a3a;
+  --dr-page-shadow: 0 4px 12px rgba(74, 53, 32, 0.15);
+  --dr-ctrl-bg: rgba(60, 40, 18, 0.88);
+  --dr-ctrl-fg: #fdf3dc;
+  --dr-ctrl-hover: rgba(253, 243, 220, 0.14);
+}
+.dr-focus[data-theme="dark"]     {
+  --dr-bg: #1E1E24; --dr-fg: #e0e0e0; --dr-accent: #818cf8;
+  --dr-page-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --dr-ctrl-bg: rgba(8, 8, 14, 0.90);
+  --dr-ctrl-fg: #e2e8f0;
+  --dr-ctrl-hover: rgba(255, 255, 255, 0.10);
+}
+.dr-focus[data-theme="contrast"] {
+  --dr-bg: #000000; --dr-fg: #FFFF66; --dr-accent: #FFFF66;
+  --dr-page-shadow: 0 0 0 2px rgba(255, 255, 102, 0.3);
+  --dr-ctrl-bg: rgba(0, 0, 0, 0.96);
+  --dr-ctrl-fg: #FFFF66;
+  --dr-ctrl-hover: rgba(255, 255, 102, 0.18);
+}
+
+.dr-drain {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: rgba(127, 127, 127, 0.15);
+  z-index: 5;
+}
+.dr-drain-fill {
+  height: 100%;
+  background: var(--dr-accent);
+  transition: width 0.25s linear;
+}
+.dr-time {
+  position: absolute;
+  top: 14px;
+  right: 24px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  opacity: 0.75;
+  z-index: 5;
+  pointer-events: none;
+}
+.dr-focus[data-theme="default"] .dr-time,
+.dr-focus[data-theme="sepia"] .dr-time {
+  background: var(--dr-ctrl-bg);
+  color: var(--dr-ctrl-fg);
+  opacity: 1;
+  padding: 4px 12px;
+  border-radius: 9999px;
+}
+
+/* Embedded PdfViewer fills the focus canvas */
+.dr-pdf {
+  flex: 1;
+  min-height: 0;
+  background: var(--dr-bg);
+  color: inherit;
+  padding: 48px 0 96px;
+}
+.dr-pdf .pdf-page-container {
+  background: white;
+  box-shadow: var(--dr-page-shadow);
+  margin: 0 auto 16px;
+}
+.dr-focus[data-theme="contrast"] .dr-pdf .pdf-page-container {
+  background: white; /* PDFs render against white; the surrounding canvas stays high-contrast */
+}
+
+/* Reading ruler — underline (z-index 3, BELOW the highlight layer) */
+.dr-ruler-underline {
+  position: absolute;
+  left: 0; right: 0;
+  height: 3px;
+  background: rgba(99, 102, 241, 0.55);
+  pointer-events: none;
+  z-index: 3;
+  mix-blend-mode: multiply;
+}
+.dr-focus[data-theme="dark"] .dr-ruler-underline,
+.dr-focus[data-theme="contrast"] .dr-ruler-underline {
+  background: rgba(255, 255, 102, 0.7);
+  mix-blend-mode: screen;
+}
+
+/* Reading ruler — masking (z-index 3, BELOW the highlight layer) */
+.dr-ruler-mask {
+  position: absolute;
+  left: 0; right: 0;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 3;
+}
+.dr-ruler-mask-top { top: 0; }
+.dr-ruler-mask-bottom { bottom: 0; }
+.dr-focus[data-theme="default"] .dr-ruler-mask,
+.dr-focus[data-theme="sepia"] .dr-ruler-mask {
+  background: rgba(15, 23, 42, 0.35);
+}
+
+/* Bottom control strip */
+.dr-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--dr-ctrl-bg, rgba(15, 23, 42, 0.82));
+  color: var(--dr-ctrl-fg, #f1f5f9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 10px 18px;
+  border-radius: 9999px;
+  z-index: 6;
+}
+.dr-ctl {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.dr-ctl:hover { background: var(--dr-ctrl-hover, rgba(255, 255, 255, 0.12)); }
+.dr-page-info {
+  font-size: 13px;
+  opacity: 0.8;
+  padding: 0 4px;
+}
+
+/* Smaller round button (paging arrows + zoom step) */
+.dr-ctl-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, opacity 0.15s;
+}
+.dr-ctl-sm:hover { background: var(--dr-ctrl-hover, rgba(255, 255, 255, 0.12)); }
+.dr-ctl-sm:disabled { opacity: 0.35; cursor: default; }
+.dr-ctl-sm:disabled:hover { background: transparent; }
+
+.dr-page-input {
+  width: 44px;
+  text-align: center;
+  background: var(--dr-ctrl-hover, rgba(255, 255, 255, 0.1));
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: inherit;
+  padding: 4px 6px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.dr-page-input:focus {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: var(--dr-ctrl-fg, #f1f5f9);
+}
+.dr-page-total {
+  font-size: 13px;
+  opacity: 0.7;
+  padding: 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+.dr-zoom-pct {
+  font-size: 12px;
+  opacity: 0.8;
+  padding: 0 4px;
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.dr-fit-select {
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 3px 6px;
+  cursor: pointer;
+  outline: none;
+}
+.dr-fit-select:hover { background: var(--dr-ctrl-hover, rgba(255, 255, 255, 0.12)); }
+.dr-fit-select option {
+  background: #1e293b;
+  color: white;
+}
+.dr-spacer { width: 1px; height: 28px; background: currentColor; opacity: 0.25; }
+.dr-exit {
+  background: transparent;
+  border: 1.5px solid currentColor;
+  color: inherit;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dr-exit:hover { background: var(--dr-ctrl-hover, rgba(255, 255, 255, 0.12)); }
+
+/* Exit guard */
+.dr-guard-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.dr-guard {
+  background: white;
+  color: #1f2937;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 420px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
+}
+.dr-focus[data-theme="dark"] .dr-guard,
+.dr-focus[data-theme="contrast"] .dr-guard {
+  background: #1E1E24;
+  color: #e0e0e0;
+}
+.dr-btn-primary {
+  background: var(--dr-accent);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 0;
+  cursor: pointer;
+}
+.dr-btn-ghost {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Splash loader — fades over the focus canvas until PDF + notes + page restore are ready.
+   Sits above controls/drawer (z 6/7) but below the exit guard (z 10) so the user can
+   still bail out if something hangs. */
+.dr-splash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--dr-bg);
+  color: var(--dr-fg);
+  z-index: 9;
+  pointer-events: auto;
+  user-select: none;
+}
+.dr-splash-spinner {
+  width: 44px;
+  height: 44px;
+  border: 3px solid rgba(127, 127, 127, 0.18);
+  border-top-color: var(--dr-accent);
+  border-radius: 50%;
+  animation: dr-splash-spin 0.8s linear infinite;
+}
+.dr-splash-label {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+@keyframes dr-splash-spin {
+  to { transform: rotate(360deg); }
+}
+.dr-splash-leave-active {
+  transition: opacity 0.35s ease;
+}
+.dr-splash-leave-to {
+  opacity: 0;
+}
+
+/* Notes pill in the bottom control strip */
+.dr-notes-pill {
+  background: transparent;
+  border: 1.5px solid currentColor;
+  color: inherit;
+  padding: 8px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dr-notes-pill:hover { background: var(--dr-ctrl-hover, rgba(255, 255, 255, 0.12)); }
+.dr-notes-pill-active {
+  background: var(--dr-accent);
+  color: white;
+  border-color: var(--dr-accent);
+}
+.dr-focus[data-theme="contrast"] .dr-notes-pill-active {
+  color: #000;
+}
+
+/* Capture toast */
+.dr-toast {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.92);
+  color: white;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  z-index: 8;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+.dr-focus[data-theme="contrast"] .dr-toast {
+  background: rgba(255, 255, 102, 0.92);
+  color: black;
+}
+.dr-toast-enter-active, .dr-toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.dr-toast-enter-from, .dr-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-6px);
+}
+
+/* Notes drawer */
+.dr-drawer {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: min(360px, 30vw);
+  background: var(--dr-bg);
+  color: var(--dr-fg);
+  border-left: 1px solid rgba(127, 127, 127, 0.2);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
+}
+.dr-drawer-enter-active, .dr-drawer-leave-active { transition: transform 0.25s ease; }
+.dr-drawer-enter-from, .dr-drawer-leave-to { transform: translateX(100%); }
+
+.dr-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.15);
+}
+.dr-drawer-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.dr-drawer-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.dr-drawer-close:hover { opacity: 1; background: rgba(127, 127, 127, 0.15); }
+
+.dr-drawer-empty {
+  padding: 24px;
+  font-size: 13px;
+  opacity: 0.6;
+  text-align: center;
+}
+.dr-drawer-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.dr-row {
+  padding: 10px 18px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.dr-row:hover { background: rgba(127, 127, 127, 0.08); }
+.dr-row[data-color="yellow"]:hover { border-left-color: #facc15; }
+.dr-row[data-color="green"]:hover  { border-left-color: #4ade80; }
+.dr-row[data-color="blue"]:hover   { border-left-color: #60a5fa; }
+.dr-row[data-color="pink"]:hover   { border-left-color: #f472b6; }
+.dr-row-expanded { background: rgba(127, 127, 127, 0.08); }
+
+.dr-row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.dr-row-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.dr-row-dot[data-color="yellow"] { background: #facc15; }
+.dr-row-dot[data-color="green"]  { background: #4ade80; }
+.dr-row-dot[data-color="blue"]   { background: #60a5fa; }
+.dr-row-dot[data-color="pink"]   { background: #f472b6; }
+.dr-row-snippet {
+  font-size: 12.5px;
+  line-height: 1.45;
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-style: italic;
+  opacity: 0.85;
+}
+.dr-row-page {
+  font-size: 11px;
+  opacity: 0.55;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dr-row-body { margin-top: 8px; }
+.dr-row-edit {
+  width: 100%;
+  background: rgba(127, 127, 127, 0.08);
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  color: inherit;
+  resize: vertical;
+  font-family: inherit;
+}
+.dr-row-edit:focus {
+  outline: 2px solid var(--dr-accent);
+  outline-offset: -1px;
+}
+.dr-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.dr-row-colors { display: flex; gap: 6px; }
+.dr-row-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(127, 127, 127, 0.5);
+  cursor: pointer;
+  padding: 0;
+}
+.dr-row-color[data-color="yellow"] { background: #facc15; }
+.dr-row-color[data-color="green"]  { background: #4ade80; }
+.dr-row-color[data-color="blue"]   { background: #60a5fa; }
+.dr-row-color[data-color="pink"]   { background: #f472b6; }
+.dr-row-color-active {
+  border-color: var(--dr-fg);
+  border-width: 2.5px;
+  transform: scale(1.1);
+}
+.dr-row-delete {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 16px;
+  opacity: 0.5;
+  cursor: pointer;
+}
+.dr-row-delete:hover { opacity: 1; background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+.dr-text-notes {
+  margin: 12px 12px 0;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(127, 127, 127, 0.15);
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.06);
+}
+.dr-text-notes-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.45;
+  margin-bottom: 6px;
+}
+.dr-text-notes-body {
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Theme-aware highlight tints inside the focus reader */
+.dr-focus[data-theme="sepia"] .pdf-highlight[data-color="yellow"] { background: rgba(250, 204, 21, 0.40); }
+.dr-focus[data-theme="sepia"] .pdf-highlight[data-color="green"]  { background: rgba(74, 222, 128, 0.40); }
+.dr-focus[data-theme="sepia"] .pdf-highlight[data-color="blue"]   { background: rgba(96, 165, 250, 0.40); }
+.dr-focus[data-theme="sepia"] .pdf-highlight[data-color="pink"]   { background: rgba(244, 114, 182, 0.45); }
+
+.dr-focus[data-theme="dark"] .pdf-highlight[data-color="yellow"] { background: rgba(250, 204, 21, 0.50); }
+.dr-focus[data-theme="dark"] .pdf-highlight[data-color="green"]  { background: rgba(74, 222, 128, 0.50); }
+.dr-focus[data-theme="dark"] .pdf-highlight[data-color="blue"]   { background: rgba(96, 165, 250, 0.50); }
+.dr-focus[data-theme="dark"] .pdf-highlight[data-color="pink"]   { background: rgba(244, 114, 182, 0.55); }
+
+.dr-focus[data-theme="contrast"] .pdf-highlight {
+  background: rgba(250, 204, 21, 0.55);
+  outline: 1px solid rgba(250, 204, 21, 0.9);
+}
+.dr-focus[data-theme="contrast"] .pdf-highlight[data-color="green"]  { background: rgba(74, 222, 128, 0.55); outline-color: rgba(74, 222, 128, 0.9); }
+.dr-focus[data-theme="contrast"] .pdf-highlight[data-color="blue"]   { background: rgba(96, 165, 250, 0.55); outline-color: rgba(96, 165, 250, 0.9); }
+.dr-focus[data-theme="contrast"] .pdf-highlight[data-color="pink"]   { background: rgba(244, 114, 182, 0.60); outline-color: rgba(244, 114, 182, 0.9); }
+
+/* ─── PDF viewer ────────────────────────────────────────────── */
+.pdf-viewer {
+  @apply h-full overflow-y-auto bg-slate-100 dark:bg-slate-950;
+}
+.pdf-page-container {
+  @apply mx-auto my-4 relative bg-white shadow;
+}
+.pdf-page-container canvas {
+  display: block;
+}
+.pdf-page-container .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: visible; /* was hidden — clips compressed spans making edge text unselectable */
+  opacity: 0.25;
+  line-height: 1;
+}
+.pdf-page-container .pdf-page-label {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: rgba(15, 23, 42, 0.55);
+  pointer-events: none;
+  z-index: 5;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.dr-focus[data-theme="sepia"] .pdf-page-label    { color: rgba(74, 53, 32, 0.6); }
+.dr-focus[data-theme="dark"]  .pdf-page-label    { color: rgba(241, 245, 249, 0.55); }
+.dr-focus[data-theme="contrast"] .pdf-page-label {
+  color: #FFFF66;
+  background: rgba(0,0,0,0.55);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.pdf-page-container .textLayer > span,
+.pdf-page-container .textLayer > br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+.pdf-page-container .textLayer ::selection {
+  background: rgba(99, 102, 241, 0.4);
+}
+.pdf-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4; /* sits above the masking ruler (z-index 3) */
+}
+.pdf-highlight {
+  position: absolute;
+  background: rgba(250, 204, 21, 0.35);
+  border-radius: 2px;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pdf-highlight[data-color="yellow"] { background: rgba(250, 204, 21, 0.35); }
+.pdf-highlight[data-color="green"]  { background: rgba(74, 222, 128, 0.35); }
+.pdf-highlight[data-color="blue"]   { background: rgba(96, 165, 250, 0.35); }
+.pdf-highlight[data-color="pink"]   { background: rgba(244, 114, 182, 0.40); }
+.pdf-highlight[data-color="yellow"]:hover { background: rgba(250, 204, 21, 0.55); }
+.pdf-highlight[data-color="green"]:hover  { background: rgba(74, 222, 128, 0.55); }
+.pdf-highlight[data-color="blue"]:hover   { background: rgba(96, 165, 250, 0.55); }
+.pdf-highlight[data-color="pink"]:hover   { background: rgba(244, 114, 182, 0.60); }
+.pdf-highlight-active {
+  outline: 2px solid rgba(99, 102, 241, 0.85);
+  filter: brightness(1.1);
+}
+
+.pdf-selection-tooltip {
+  position: absolute;
+  z-index: 30;
+  background: #1e293b;
+  padding: 5px 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.pdf-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  border: 2px solid rgba(255,255,255,0.4);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.pdf-color-swatch:hover {
+  transform: scale(1.15);
+  border-color: white;
+}
+.pdf-color-swatch[data-color="yellow"] { background: #facc15; }
+.pdf-color-swatch[data-color="green"]  { background: #4ade80; }
+.pdf-color-swatch[data-color="blue"]   { background: #60a5fa; }
+.pdf-color-swatch[data-color="pink"]   { background: #f472b6; }
+
+/* ─── TipTap editor ─────────────────────────────────────────── */
+.ProseMirror {
+  outline: none;
+  min-height: 400px;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: theme(colors.slate.400);
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror h1 { @apply text-3xl font-bold mt-6 mb-3; }
+.ProseMirror h2 { @apply text-2xl font-semibold mt-5 mb-2; }
+.ProseMirror h3 { @apply text-xl font-semibold mt-4 mb-2; }
+.ProseMirror p  { @apply my-2 leading-relaxed; }
+
+.ProseMirror ul { @apply list-disc pl-6 my-2 space-y-1; }
+.ProseMirror ol { @apply list-decimal pl-6 my-2 space-y-1; }
+
+.ProseMirror blockquote {
+  @apply border-l-4 border-slate-300 pl-4 italic text-slate-600 my-3;
+}
+
+.ProseMirror pre {
+  @apply bg-slate-900 text-slate-100 rounded-lg p-4 my-3 overflow-x-auto font-mono text-sm;
+}
+
+.ProseMirror code {
+  @apply bg-slate-100 text-slate-800 rounded px-1 py-0.5 font-mono text-sm;
+}
+
+.ProseMirror pre code {
+  @apply bg-transparent text-inherit p-0;
+}
+
+.ProseMirror img {
+  @apply max-w-full rounded-lg my-3;
+}
+
+/* ProseMirror dark mode overrides */
+.dark .ProseMirror {
+  color: theme(colors.slate.100);
+}
+.dark .ProseMirror p.is-editor-empty:first-child::before {
+  color: theme(colors.slate.600);
+}
+.dark .ProseMirror blockquote {
+  @apply border-slate-600 text-slate-400;
+}
+.dark .ProseMirror code {
+  @apply bg-slate-700 text-slate-200;
+}
+
+/* ─── Search result highlighting ───────────────────────────── */
+mark {
+  @apply bg-yellow-200 text-yellow-900 rounded px-0.5;
+}
+.dark mark {
+  @apply bg-yellow-800 text-yellow-200;
+}
+
+/* ─── Shared form utility classes ───────────────────────────── */
+.input {
+  @apply w-full border border-slate-300 rounded-md px-3 py-2 text-sm
+         focus:outline-none focus:ring-2 focus:ring-indigo-500
+         bg-white text-slate-900 placeholder:text-slate-400
+         dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100
+         dark:placeholder:text-slate-500 dark:focus:ring-indigo-400;
+}
+
+.btn-primary {
+  @apply bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50
+         text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors;
+}
+
+.btn-ghost {
+  @apply text-slate-600 hover:text-slate-900 text-sm font-medium
+         px-4 py-2 rounded-lg hover:bg-slate-100 transition-colors
+         dark:text-slate-300 dark:hover:text-slate-100 dark:hover:bg-slate-700;
+}

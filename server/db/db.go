@@ -1,0 +1,1154 @@
+package db
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	_ "github.com/mattn/go-sqlite3"
+)
+
+type DB struct {
+	sql *sql.DB
+}
+
+// --- Types ---
+
+type Semester struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+	CreatedAt string `json:"created_at"`
+}
+
+type Class struct {
+	ID         int64  `json:"id"`
+	SemesterID int64  `json:"semester_id"`
+	Name       string `json:"name"`
+	Code       string `json:"code"`
+	Instructor string `json:"instructor"`
+	Schedule   string `json:"schedule"`
+	Color      string `json:"color"`
+}
+
+type Source struct {
+	ID        int64  `json:"id"`
+	ClassID   int64  `json:"class_id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Date      string `json:"date"`
+	DueDate   string `json:"due_date"`
+	Reference string `json:"reference"`
+	SortOrder int    `json:"sort_order"`
+	Priority  int    `json:"priority"`   // 0=None,1=High,2=Medium,3=Low
+	Completed bool   `json:"completed"`
+}
+
+type ClassMeeting struct {
+	ID         int64  `json:"id"`
+	ClassID    int64  `json:"class_id"`
+	DayOfWeek  int    `json:"day_of_week"`
+	StartTime  string `json:"start_time"`
+	EndTime    string `json:"end_time"`
+	Location   string `json:"location"`
+}
+
+type SourceWithClass struct {
+	Source
+	ClassName  string `json:"class_name"`
+	ClassColor string `json:"class_color"`
+}
+
+type ClassMeetingWithClass struct {
+	ClassMeeting
+	ClassColor string `json:"class_color"`
+	ClassName  string `json:"class_name"`
+}
+
+type CalendarEventProps struct {
+	Type       string `json:"type"`
+	SourceID   int64  `json:"sourceID,omitempty"`
+	ClassID    int64  `json:"classID,omitempty"`
+	ClassName  string `json:"className,omitempty"`
+	SourceType string `json:"sourceType,omitempty"`
+}
+
+type CalendarEvent struct {
+	ID            string             `json:"id"`
+	Title         string             `json:"title"`
+	Start         string             `json:"start"`
+	End           string             `json:"end,omitempty"`
+	AllDay        bool               `json:"allDay"`
+	Color         string             `json:"color"`
+	ExtendedProps CalendarEventProps `json:"extendedProps"`
+}
+
+type Attachment struct {
+	ID        int64  `json:"id"`
+	ClassID   *int64 `json:"class_id"`
+	SourceID  *int64 `json:"source_id"`
+	Filename  string `json:"filename"`
+	MimeType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	CreatedAt string `json:"created_at"`
+}
+
+type PDFLibraryItem struct {
+	ID          int64  `json:"id"`
+	Filename    string `json:"filename"`
+	SizeBytes   int64  `json:"size_bytes"`
+	CreatedAt   string `json:"created_at"`
+	ClassID     int64  `json:"class_id"`
+	ClassName   string `json:"class_name"`
+	ClassColor  string `json:"class_color"`
+	SourceID    *int64 `json:"source_id"`
+	SourceTitle string `json:"source_title"`
+}
+
+type FocusSession struct {
+	ID           int64  `json:"id"`
+	Date         string `json:"date"`
+	DurationSec  int    `json:"duration_sec"`
+	AttachmentID int64  `json:"attachment_id"`
+	Filename     string `json:"filename"`
+	Completed    bool   `json:"completed"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type GradeRubric struct {
+	ID          int64           `json:"id"`
+	ClassID     int64           `json:"class_id"`
+	GradingType string          `json:"grading_type"`
+	PlusMinus   bool            `json:"plus_minus"`
+	Thresholds  string          `json:"thresholds"`
+	Categories  []GradeCategory `json:"categories"`
+	CreatedAt   string          `json:"created_at"`
+}
+
+type GradeCategory struct {
+	ID            int64    `json:"id"`
+	RubricID      int64    `json:"rubric_id"`
+	Name          string   `json:"name"`
+	Weight        float64  `json:"weight"`
+	IsExtraCredit bool     `json:"is_extra_credit"`
+	Earned        *float64 `json:"earned"`
+	Possible      float64  `json:"possible"`
+	SortOrder     int      `json:"sort_order"`
+}
+
+type Note struct {
+	ID        int64  `json:"id"`
+	SourceID  int64  `json:"source_id"`
+	Body      string `json:"body"`
+	Locked    bool   `json:"locked"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// ErrNoteLocked is returned when an Upsert is attempted on a locked note.
+var ErrNoteLocked = errors.New("note is locked")
+
+type SearchResult struct {
+	NoteID      int64  `json:"note_id"`
+	SourceID    int64  `json:"source_id"`
+	SourceTitle string `json:"source_title"`
+	SourceDate  string `json:"source_date"`
+	ClassID     int64  `json:"class_id"`
+	ClassName   string `json:"class_name"`
+	ClassColor  string `json:"class_color"`
+	Snippet     string `json:"snippet"`
+}
+
+// --- Open / Migrate ---
+
+func Open(dataDir string) (*DB, error) {
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("create data dir: %w", err)
+	}
+	path := filepath.Join(dataDir, "notes.db")
+	sqlDB, err := sql.Open("sqlite3", path+"?_foreign_keys=on&_journal_mode=WAL")
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(1)
+	d := &DB{sql: sqlDB}
+	if err := d.migrate(); err != nil {
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return d, nil
+}
+
+func (d *DB) migrate() error {
+	entries, err := filepath.Glob("server/db/migrations/*.sql")
+	if err != nil {
+		return err
+	}
+	if _, err := d.sql.Exec(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY)`); err != nil {
+		return err
+	}
+	for _, path := range entries {
+		name := filepath.Base(path)
+		var existing string
+		err := d.sql.QueryRow(`SELECT name FROM _migrations WHERE name = ?`, name).Scan(&existing)
+		if err == nil {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if _, err := d.sql.Exec(string(data)); err != nil {
+			return fmt.Errorf("apply %s: %w", name, err)
+		}
+		if _, err := d.sql.Exec(`INSERT INTO _migrations (name) VALUES (?)`, name); err != nil {
+			return err
+		}
+	}
+
+	// Re-index FTS to include pdfQuote attrs.text (highlighted source passages).
+	// Runs once; the marker prevents repeat runs on subsequent startups.
+	const reindexMark = "!fts-reindex-pdfquote-text"
+	var marker string
+	if d.sql.QueryRow(`SELECT name FROM _migrations WHERE name = ?`, reindexMark).Scan(&marker) == sql.ErrNoRows {
+		if err := d.reindexAllFTS(); err != nil {
+			return fmt.Errorf("fts reindex: %w", err)
+		}
+		if _, err := d.sql.Exec(`INSERT INTO _migrations (name) VALUES (?)`, reindexMark); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DB) reindexAllFTS() error {
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM notes_fts`); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT id, body FROM notes WHERE body != ''`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var body string
+		if err := rows.Scan(&id, &body); err != nil {
+			return err
+		}
+		if text := extractText(body); text != "" {
+			if _, err := tx.Exec(`INSERT INTO notes_fts (note_id, content) VALUES (?, ?)`, id, text); err != nil {
+				return err
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// --- Semesters ---
+
+func (d *DB) ListSemesters() ([]Semester, error) {
+	rows, err := d.sql.Query(`SELECT id, name, start_date, end_date, created_at FROM semesters ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Semester
+	for rows.Next() {
+		var s Semester
+		if err := rows.Scan(&s.ID, &s.Name, &s.StartDate, &s.EndDate, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) CreateSemester(name, startDate, endDate string) (Semester, error) {
+	res, err := d.sql.Exec(`INSERT INTO semesters (name, start_date, end_date) VALUES (?, ?, ?)`, name, startDate, endDate)
+	if err != nil {
+		return Semester{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetSemester(id)
+}
+
+func (d *DB) GetSemester(id int64) (Semester, error) {
+	var s Semester
+	err := d.sql.QueryRow(`SELECT id, name, start_date, end_date, created_at FROM semesters WHERE id = ?`, id).
+		Scan(&s.ID, &s.Name, &s.StartDate, &s.EndDate, &s.CreatedAt)
+	return s, err
+}
+
+func (d *DB) UpdateSemester(id int64, name, startDate, endDate string) (Semester, error) {
+	_, err := d.sql.Exec(`UPDATE semesters SET name=?, start_date=?, end_date=? WHERE id=?`, name, startDate, endDate, id)
+	if err != nil {
+		return Semester{}, err
+	}
+	return d.GetSemester(id)
+}
+
+func (d *DB) DeleteSemester(id int64) error {
+	_, err := d.sql.Exec(`DELETE FROM semesters WHERE id=?`, id)
+	return err
+}
+
+// --- Classes ---
+
+func (d *DB) ListClasses(semesterID int64) ([]Class, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, semester_id, name, code, instructor, schedule, color FROM classes WHERE semester_id=? ORDER BY id`,
+		semesterID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Class
+	for rows.Next() {
+		var c Class
+		if err := rows.Scan(&c.ID, &c.SemesterID, &c.Name, &c.Code, &c.Instructor, &c.Schedule, &c.Color); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) CreateClass(semesterID int64, name, code, instructor, schedule, color string) (Class, error) {
+	res, err := d.sql.Exec(
+		`INSERT INTO classes (semester_id, name, code, instructor, schedule, color) VALUES (?,?,?,?,?,?)`,
+		semesterID, name, code, instructor, schedule, color,
+	)
+	if err != nil {
+		return Class{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetClass(id)
+}
+
+func (d *DB) GetClass(id int64) (Class, error) {
+	var c Class
+	err := d.sql.QueryRow(
+		`SELECT id, semester_id, name, code, instructor, schedule, color FROM classes WHERE id=?`, id,
+	).Scan(&c.ID, &c.SemesterID, &c.Name, &c.Code, &c.Instructor, &c.Schedule, &c.Color)
+	return c, err
+}
+
+func (d *DB) UpdateClass(id int64, name, code, instructor, schedule, color string) (Class, error) {
+	_, err := d.sql.Exec(
+		`UPDATE classes SET name=?, code=?, instructor=?, schedule=?, color=? WHERE id=?`,
+		name, code, instructor, schedule, color, id,
+	)
+	if err != nil {
+		return Class{}, err
+	}
+	return d.GetClass(id)
+}
+
+func (d *DB) DeleteClass(id int64) error {
+	_, err := d.sql.Exec(`DELETE FROM classes WHERE id=?`, id)
+	return err
+}
+
+// --- Sources ---
+
+func (d *DB) ListSources(classID int64) ([]Source, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, class_id, type, title, date, due_date, reference, sort_order, priority, completed FROM sources WHERE class_id=? ORDER BY sort_order, date, id`,
+		classID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Source
+	for rows.Next() {
+		var s Source
+		if err := rows.Scan(&s.ID, &s.ClassID, &s.Type, &s.Title, &s.Date, &s.DueDate, &s.Reference, &s.SortOrder, &s.Priority, &s.Completed); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) CreateSource(classID int64, srcType, title, date, dueDate, reference string, priority int) (Source, error) {
+	var maxOrder int
+	_ = d.sql.QueryRow(`SELECT COALESCE(MAX(sort_order),0) FROM sources WHERE class_id=?`, classID).Scan(&maxOrder)
+	res, err := d.sql.Exec(
+		`INSERT INTO sources (class_id, type, title, date, due_date, reference, sort_order, priority) VALUES (?,?,?,?,?,?,?,?)`,
+		classID, srcType, title, date, dueDate, reference, maxOrder+1, priority,
+	)
+	if err != nil {
+		return Source{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetSource(id)
+}
+
+func (d *DB) GetSource(id int64) (Source, error) {
+	var s Source
+	err := d.sql.QueryRow(
+		`SELECT id, class_id, type, title, date, due_date, reference, sort_order, priority, completed FROM sources WHERE id=?`, id,
+	).Scan(&s.ID, &s.ClassID, &s.Type, &s.Title, &s.Date, &s.DueDate, &s.Reference, &s.SortOrder, &s.Priority, &s.Completed)
+	return s, err
+}
+
+func (d *DB) UpdateSource(id int64, srcType, title, date, dueDate, reference string, priority int, completed bool) (Source, error) {
+	_, err := d.sql.Exec(
+		`UPDATE sources SET type=?, title=?, date=?, due_date=?, reference=?, priority=?, completed=? WHERE id=?`,
+		srcType, title, date, dueDate, reference, priority, completed, id,
+	)
+	if err != nil {
+		return Source{}, err
+	}
+	return d.GetSource(id)
+}
+
+func (d *DB) DeleteSource(id int64) error {
+	_, err := d.sql.Exec(`DELETE FROM sources WHERE id=?`, id)
+	return err
+}
+
+func (d *DB) ReorderSources(classID int64, ids []int64) error {
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i, id := range ids {
+		if _, err := tx.Exec(`UPDATE sources SET sort_order=? WHERE id=? AND class_id=?`, i, id, classID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// --- Class Meetings ---
+
+func (d *DB) ListMeetings(classID int64) ([]ClassMeeting, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, class_id, day_of_week, start_time, end_time, location FROM class_meetings WHERE class_id=? ORDER BY day_of_week, start_time`,
+		classID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ClassMeeting
+	for rows.Next() {
+		var m ClassMeeting
+		if err := rows.Scan(&m.ID, &m.ClassID, &m.DayOfWeek, &m.StartTime, &m.EndTime, &m.Location); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) CreateMeeting(classID int64, dayOfWeek int, startTime, endTime, location string) (ClassMeeting, error) {
+	res, err := d.sql.Exec(
+		`INSERT INTO class_meetings (class_id, day_of_week, start_time, end_time, location) VALUES (?,?,?,?,?)`,
+		classID, dayOfWeek, startTime, endTime, location,
+	)
+	if err != nil {
+		return ClassMeeting{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetMeeting(id)
+}
+
+func (d *DB) GetMeeting(id int64) (ClassMeeting, error) {
+	var m ClassMeeting
+	err := d.sql.QueryRow(
+		`SELECT id, class_id, day_of_week, start_time, end_time, location FROM class_meetings WHERE id=?`, id,
+	).Scan(&m.ID, &m.ClassID, &m.DayOfWeek, &m.StartTime, &m.EndTime, &m.Location)
+	return m, err
+}
+
+func (d *DB) UpdateMeeting(id int64, dayOfWeek int, startTime, endTime, location string) (ClassMeeting, error) {
+	_, err := d.sql.Exec(
+		`UPDATE class_meetings SET day_of_week=?, start_time=?, end_time=?, location=? WHERE id=?`,
+		dayOfWeek, startTime, endTime, location, id,
+	)
+	if err != nil {
+		return ClassMeeting{}, err
+	}
+	return d.GetMeeting(id)
+}
+
+func (d *DB) DeleteMeeting(id int64) error {
+	_, err := d.sql.Exec(`DELETE FROM class_meetings WHERE id=?`, id)
+	return err
+}
+
+// --- Calendar queries ---
+
+func (d *DB) SourcesInRangeForClass(classID int64, start, end string) ([]Source, error) {
+	rows, err := d.sql.Query(`
+		SELECT id, class_id, type, title, date, due_date, reference, sort_order, priority, completed
+		FROM sources
+		WHERE class_id = ?
+		  AND (
+		    (date != '' AND date BETWEEN ? AND ?)
+		    OR (due_date != '' AND due_date BETWEEN ? AND ?)
+		  )
+		ORDER BY date, due_date`,
+		classID, start, end, start, end,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanSources(rows)
+}
+
+func (d *DB) SourcesInRangeForSemester(semesterID int64, start, end string) ([]SourceWithClass, error) {
+	rows, err := d.sql.Query(`
+		SELECT s.id, s.class_id, s.type, s.title, s.date, s.due_date, s.reference, s.sort_order, s.priority, s.completed,
+		       c.name, c.color
+		FROM sources s
+		JOIN classes c ON c.id = s.class_id
+		WHERE c.semester_id = ?
+		  AND (
+		    (s.date != '' AND s.date BETWEEN ? AND ?)
+		    OR (s.due_date != '' AND s.due_date BETWEEN ? AND ?)
+		  )
+		ORDER BY s.date, s.due_date`,
+		semesterID, start, end, start, end,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SourceWithClass
+	for rows.Next() {
+		var s SourceWithClass
+		if err := rows.Scan(&s.ID, &s.ClassID, &s.Type, &s.Title, &s.Date, &s.DueDate, &s.Reference, &s.SortOrder, &s.Priority, &s.Completed, &s.ClassName, &s.ClassColor); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) ListSourcesForSemester(semesterID int64) ([]SourceWithClass, error) {
+	rows, err := d.sql.Query(`
+		SELECT s.id, s.class_id, s.type, s.title, s.date, s.due_date, s.reference, s.sort_order, s.priority, s.completed,
+		       c.name, c.color
+		FROM sources s
+		JOIN classes c ON c.id = s.class_id
+		WHERE c.semester_id = ?
+		ORDER BY
+		  CASE WHEN s.priority = 0 THEN 9999 ELSE s.priority END,
+		  CASE WHEN s.due_date = '' THEN '9999-99-99' ELSE s.due_date END,
+		  s.title`,
+		semesterID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SourceWithClass
+	for rows.Next() {
+		var s SourceWithClass
+		if err := rows.Scan(&s.ID, &s.ClassID, &s.Type, &s.Title, &s.Date, &s.DueDate, &s.Reference, &s.SortOrder, &s.Priority, &s.Completed, &s.ClassName, &s.ClassColor); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if out == nil {
+		out = []SourceWithClass{}
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) ListMeetingsForSemester(semesterID int64) ([]ClassMeetingWithClass, error) {
+	rows, err := d.sql.Query(`
+		SELECT m.id, m.class_id, m.day_of_week, m.start_time, m.end_time, m.location, c.color, c.name
+		FROM class_meetings m
+		JOIN classes c ON c.id = m.class_id
+		WHERE c.semester_id = ?
+		ORDER BY m.day_of_week, m.start_time`,
+		semesterID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ClassMeetingWithClass
+	for rows.Next() {
+		var m ClassMeetingWithClass
+		if err := rows.Scan(&m.ID, &m.ClassID, &m.DayOfWeek, &m.StartTime, &m.EndTime, &m.Location, &m.ClassColor, &m.ClassName); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func scanSources(rows *sql.Rows) ([]Source, error) {
+	var out []Source
+	for rows.Next() {
+		var s Source
+		if err := rows.Scan(&s.ID, &s.ClassID, &s.Type, &s.Title, &s.Date, &s.DueDate, &s.Reference, &s.SortOrder, &s.Priority, &s.Completed); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// --- Attachments ---
+
+func (d *DB) scanAttachments(rows *sql.Rows) ([]Attachment, error) {
+	var out []Attachment
+	for rows.Next() {
+		var a Attachment
+		if err := rows.Scan(&a.ID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) ListAttachmentsForClass(classID int64) ([]Attachment, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at
+		 FROM attachments WHERE class_id=? ORDER BY created_at`, classID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return d.scanAttachments(rows)
+}
+
+func (d *DB) ListAttachmentsForSource(sourceID int64) ([]Attachment, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at
+		 FROM attachments WHERE source_id=? ORDER BY created_at`, sourceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return d.scanAttachments(rows)
+}
+
+// ListAllAttachmentsForClass returns every attachment that will be orphaned on
+// disk when a class is deleted — both class-level and all its sources' files.
+func (d *DB) ListAllAttachmentsForClass(classID int64) ([]Attachment, error) {
+	rows, err := d.sql.Query(`
+		SELECT a.id, a.class_id, a.source_id, a.filename, a.mime_type, a.size_bytes, a.created_at
+		FROM attachments a
+		LEFT JOIN sources s ON s.id = a.source_id
+		WHERE a.class_id = ? OR (a.source_id IS NOT NULL AND s.class_id = ?)`,
+		classID, classID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return d.scanAttachments(rows)
+}
+
+// ListAllPDFs returns every PDF attachment in the system with its parent
+// class/source context for the Deep Read library shelf.
+func (d *DB) ListAllPDFs() ([]PDFLibraryItem, error) {
+	rows, err := d.sql.Query(`
+		SELECT a.id, a.filename, a.size_bytes, a.created_at,
+		       COALESCE(c.id, 0) AS cid,
+		       COALESCE(c.name, ''),
+		       COALESCE(c.color, ''),
+		       a.source_id,
+		       COALESCE(s.title, '')
+		FROM attachments a
+		LEFT JOIN sources s ON s.id = a.source_id
+		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, s.class_id)
+		WHERE a.mime_type = 'application/pdf'
+		ORDER BY a.created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PDFLibraryItem
+	for rows.Next() {
+		var p PDFLibraryItem
+		if err := rows.Scan(
+			&p.ID, &p.Filename, &p.SizeBytes, &p.CreatedAt,
+			&p.ClassID, &p.ClassName, &p.ClassColor,
+			&p.SourceID, &p.SourceTitle,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) GetAttachment(id int64) (Attachment, error) {
+	var a Attachment
+	err := d.sql.QueryRow(
+		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at
+		 FROM attachments WHERE id=?`, id,
+	).Scan(&a.ID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt)
+	return a, err
+}
+
+func (d *DB) CreateAttachment(classID, sourceID *int64, filename, mimeType string, sizeBytes int64) (Attachment, error) {
+	res, err := d.sql.Exec(
+		`INSERT INTO attachments (class_id, source_id, filename, mime_type, size_bytes) VALUES (?,?,?,?,?)`,
+		classID, sourceID, filename, mimeType, sizeBytes,
+	)
+	if err != nil {
+		return Attachment{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetAttachment(id)
+}
+
+func (d *DB) UpdateAttachmentSize(id, sizeBytes int64) error {
+	_, err := d.sql.Exec(`UPDATE attachments SET size_bytes=? WHERE id=?`, sizeBytes, id)
+	return err
+}
+
+func (d *DB) DeleteAttachment(id int64) error {
+	_, err := d.sql.Exec(`DELETE FROM attachments WHERE id=?`, id)
+	return err
+}
+
+// --- Attachment Progress (last page viewed) ---
+
+func (d *DB) GetAttachmentLastPage(attachmentID int64) (int, error) {
+	var lastPage int
+	err := d.sql.QueryRow(
+		`SELECT last_page FROM attachment_progress WHERE attachment_id=?`, attachmentID,
+	).Scan(&lastPage)
+	if err == sql.ErrNoRows {
+		return 1, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return lastPage, nil
+}
+
+func (d *DB) SaveAttachmentLastPage(attachmentID int64, lastPage int) error {
+	if lastPage < 1 {
+		lastPage = 1
+	}
+	_, err := d.sql.Exec(`
+		INSERT INTO attachment_progress (attachment_id, last_page, updated_at)
+		VALUES (?, ?, datetime('now'))
+		ON CONFLICT(attachment_id) DO UPDATE SET
+			last_page = excluded.last_page,
+			updated_at = excluded.updated_at
+	`, attachmentID, lastPage)
+	return err
+}
+
+// --- Focus Sessions ---
+
+func (d *DB) LogFocusSession(date string, durationSec int, attachmentID int64, filename string, completed bool) (FocusSession, error) {
+	res, err := d.sql.Exec(
+		`INSERT INTO focus_sessions (date, duration_sec, attachment_id, filename, completed) VALUES (?,?,?,?,?)`,
+		date, durationSec, attachmentID, filename, completed,
+	)
+	if err != nil {
+		return FocusSession{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetFocusSession(id)
+}
+
+func (d *DB) GetFocusSession(id int64) (FocusSession, error) {
+	var s FocusSession
+	err := d.sql.QueryRow(
+		`SELECT id, date, duration_sec, attachment_id, filename, completed, created_at FROM focus_sessions WHERE id=?`, id,
+	).Scan(&s.ID, &s.Date, &s.DurationSec, &s.AttachmentID, &s.Filename, &s.Completed, &s.CreatedAt)
+	return s, err
+}
+
+func (d *DB) ListFocusSessions() ([]FocusSession, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, date, duration_sec, attachment_id, filename, completed, created_at FROM focus_sessions ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FocusSession
+	for rows.Next() {
+		var s FocusSession
+		if err := rows.Scan(&s.ID, &s.Date, &s.DurationSec, &s.AttachmentID, &s.Filename, &s.Completed, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if out == nil {
+		out = []FocusSession{}
+	}
+	return out, rows.Err()
+}
+
+// --- Notes ---
+
+func (d *DB) GetNote(sourceID int64) (Note, error) {
+	var n Note
+	err := d.sql.QueryRow(
+		`SELECT id, source_id, body, locked, created_at, updated_at FROM notes WHERE source_id=?`, sourceID,
+	).Scan(&n.ID, &n.SourceID, &n.Body, &n.Locked, &n.CreatedAt, &n.UpdatedAt)
+	return n, err
+}
+
+func (d *DB) UpsertNote(sourceID int64, body string) (Note, error) {
+	// Enforce lock — clients shouldn't fire this when locked, but treat the server as source of truth.
+	var locked bool
+	err := d.sql.QueryRow(`SELECT locked FROM notes WHERE source_id=?`, sourceID).Scan(&locked)
+	if err != nil && err != sql.ErrNoRows {
+		return Note{}, err
+	}
+	if locked {
+		return Note{}, ErrNoteLocked
+	}
+	_, err = d.sql.Exec(`
+		INSERT INTO notes (source_id, body, updated_at)
+		VALUES (?, ?, datetime('now'))
+		ON CONFLICT(source_id) DO UPDATE SET
+			body = excluded.body,
+			updated_at = excluded.updated_at
+	`, sourceID, body)
+	if err != nil {
+		return Note{}, err
+	}
+	n, err := d.GetNote(sourceID)
+	if err != nil {
+		return Note{}, err
+	}
+	_ = d.syncFTS(n.ID, extractText(body))
+	return n, nil
+}
+
+// SetNoteLock toggles the lock flag. Creates an empty note row first if none exists,
+// so a user can lock a source's note before having authored anything.
+func (d *DB) SetNoteLock(sourceID int64, locked bool) (Note, error) {
+	_, err := d.sql.Exec(`
+		INSERT INTO notes (source_id, body, locked, updated_at)
+		VALUES (?, '', ?, datetime('now'))
+		ON CONFLICT(source_id) DO UPDATE SET locked = excluded.locked
+	`, sourceID, locked)
+	if err != nil {
+		return Note{}, err
+	}
+	return d.GetNote(sourceID)
+}
+
+func (d *DB) syncFTS(noteID int64, text string) error {
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM notes_fts WHERE note_id = ?`, noteID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO notes_fts (note_id, content) VALUES (?, ?)`, noteID, text); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// --- Search ---
+
+func (d *DB) Search(query string, classID int64) ([]SearchResult, error) {
+	seen := map[int64]bool{}
+	var out []SearchResult
+
+	// 1. FTS search of note body content
+	q1 := `
+		SELECT CAST(nf.note_id AS INTEGER), snippet(notes_fts, 1, '<mark>', '</mark>', '…', 15),
+		       n.source_id, s.title, COALESCE(s.date, ''), c.id, c.name, c.color
+		FROM notes_fts nf
+		JOIN notes n ON CAST(nf.note_id AS INTEGER) = n.id
+		JOIN sources s ON s.id = n.source_id
+		JOIN classes c ON c.id = s.class_id
+		WHERE notes_fts MATCH ?`
+	args1 := []any{query}
+	if classID > 0 {
+		q1 += " AND c.id = ?"
+		args1 = append(args1, classID)
+	}
+	q1 += " ORDER BY rank LIMIT 30"
+
+	rows1, err := d.sql.Query(q1, args1...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows1.Close()
+	for rows1.Next() {
+		var r SearchResult
+		if err := rows1.Scan(&r.NoteID, &r.Snippet, &r.SourceID, &r.SourceTitle, &r.SourceDate, &r.ClassID, &r.ClassName, &r.ClassColor); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+		seen[r.SourceID] = true
+	}
+	if err := rows1.Err(); err != nil {
+		return nil, err
+	}
+
+	// 2. Source title / reference LIKE match (sources not already found via FTS)
+	like := "%" + strings.ToLower(query) + "%"
+	q2 := `
+		SELECT n.id, n.source_id, s.title, COALESCE(s.date, ''), c.id, c.name, c.color
+		FROM notes n
+		JOIN sources s ON s.id = n.source_id
+		JOIN classes c ON c.id = s.class_id
+		WHERE (LOWER(s.title) LIKE ? OR LOWER(s.reference) LIKE ?)`
+	args2 := []any{like, like}
+	if classID > 0 {
+		q2 += " AND c.id = ?"
+		args2 = append(args2, classID)
+	}
+	q2 += " LIMIT 30"
+
+	rows2, err := d.sql.Query(q2, args2...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var r SearchResult
+		if err := rows2.Scan(&r.NoteID, &r.SourceID, &r.SourceTitle, &r.SourceDate, &r.ClassID, &r.ClassName, &r.ClassColor); err != nil {
+			return nil, err
+		}
+		if seen[r.SourceID] {
+			continue
+		}
+		out = append(out, r)
+		seen[r.SourceID] = true
+	}
+	return out, rows2.Err()
+}
+
+// --- Text extraction ---
+
+func extractText(body string) string {
+	if body == "" || !strings.HasPrefix(strings.TrimSpace(body), "{") {
+		return body
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		return body
+	}
+	var sb strings.Builder
+	walkNode(doc, &sb)
+	return strings.TrimSpace(sb.String())
+}
+
+func walkNode(node map[string]any, sb *strings.Builder) {
+	if t, _ := node["type"].(string); t == "text" {
+		if text, _ := node["text"].(string); text != "" {
+			sb.WriteString(text)
+			sb.WriteString(" ")
+		}
+		return
+	}
+	// Index the highlighted source passage stored in pdfQuote attrs.text
+	if t, _ := node["type"].(string); t == "pdfQuote" {
+		if attrs, ok := node["attrs"].(map[string]any); ok {
+			if quoted, _ := attrs["text"].(string); quoted != "" {
+				sb.WriteString(quoted)
+				sb.WriteString(" ")
+			}
+		}
+	}
+	if content, ok := node["content"].([]any); ok {
+		for _, child := range content {
+			if m, ok := child.(map[string]any); ok {
+				walkNode(m, sb)
+			}
+		}
+		sb.WriteString("\n")
+	}
+}
+
+// --- Grades ---
+
+func (d *DB) GetRubric(classID int64) (GradeRubric, error) {
+	var r GradeRubric
+	err := d.sql.QueryRow(
+		`SELECT id, class_id, grading_type, plus_minus, thresholds, created_at
+		 FROM grade_rubrics WHERE class_id=?`, classID,
+	).Scan(&r.ID, &r.ClassID, &r.GradingType, &r.PlusMinus, &r.Thresholds, &r.CreatedAt)
+	if err != nil {
+		return r, err
+	}
+	cats, err := d.listCategories(r.ID)
+	if err != nil {
+		return r, err
+	}
+	r.Categories = cats
+	return r, nil
+}
+
+func (d *DB) listCategories(rubricID int64) ([]GradeCategory, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, rubric_id, name, weight, is_extra_credit, earned, possible, sort_order
+		 FROM grade_categories WHERE rubric_id=? ORDER BY sort_order, id`, rubricID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []GradeCategory{}
+	for rows.Next() {
+		var c GradeCategory
+		var earned sql.NullFloat64
+		if err := rows.Scan(&c.ID, &c.RubricID, &c.Name, &c.Weight, &c.IsExtraCredit, &earned, &c.Possible, &c.SortOrder); err != nil {
+			return nil, err
+		}
+		if earned.Valid {
+			v := earned.Float64
+			c.Earned = &v
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// UpsertRubric creates a rubric for the class if one does not exist, or
+// updates the meta-fields (grading_type / plus_minus / thresholds) if it does.
+// Categories are managed separately.
+func (d *DB) UpsertRubric(classID int64, gradingType string, plusMinus bool, thresholds string) (GradeRubric, error) {
+	_, err := d.sql.Exec(`
+		INSERT INTO grade_rubrics (class_id, grading_type, plus_minus, thresholds)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(class_id) DO UPDATE SET
+		  grading_type = excluded.grading_type,
+		  plus_minus   = excluded.plus_minus,
+		  thresholds   = excluded.thresholds
+	`, classID, gradingType, plusMinus, thresholds)
+	if err != nil {
+		return GradeRubric{}, err
+	}
+	return d.GetRubric(classID)
+}
+
+func (d *DB) DeleteRubric(classID int64) error {
+	_, err := d.sql.Exec(`DELETE FROM grade_rubrics WHERE class_id=?`, classID)
+	return err
+}
+
+func (d *DB) AddCategory(rubricID int64, name string, weight float64, isExtraCredit bool, possible float64) (GradeCategory, error) {
+	var maxOrder int
+	_ = d.sql.QueryRow(`SELECT COALESCE(MAX(sort_order),-1) FROM grade_categories WHERE rubric_id=?`, rubricID).Scan(&maxOrder)
+	res, err := d.sql.Exec(
+		`INSERT INTO grade_categories (rubric_id, name, weight, is_extra_credit, possible, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		rubricID, name, weight, isExtraCredit, possible, maxOrder+1,
+	)
+	if err != nil {
+		return GradeCategory{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetCategory(id)
+}
+
+func (d *DB) GetCategory(id int64) (GradeCategory, error) {
+	var c GradeCategory
+	var earned sql.NullFloat64
+	err := d.sql.QueryRow(
+		`SELECT id, rubric_id, name, weight, is_extra_credit, earned, possible, sort_order
+		 FROM grade_categories WHERE id=?`, id,
+	).Scan(&c.ID, &c.RubricID, &c.Name, &c.Weight, &c.IsExtraCredit, &earned, &c.Possible, &c.SortOrder)
+	if err != nil {
+		return c, err
+	}
+	if earned.Valid {
+		v := earned.Float64
+		c.Earned = &v
+	}
+	return c, nil
+}
+
+// UpdateCategory accepts pointers so callers can update only the fields they
+// pass — nil fields are left at their existing value.
+func (d *DB) UpdateCategory(
+	id int64,
+	name *string,
+	weight *float64,
+	isExtraCredit *bool,
+	earned *float64, earnedSet bool,
+	possible *float64,
+	sortOrder *int,
+) (GradeCategory, error) {
+	existing, err := d.GetCategory(id)
+	if err != nil {
+		return GradeCategory{}, err
+	}
+	n := existing.Name
+	if name != nil {
+		n = *name
+	}
+	w := existing.Weight
+	if weight != nil {
+		w = *weight
+	}
+	ec := existing.IsExtraCredit
+	if isExtraCredit != nil {
+		ec = *isExtraCredit
+	}
+	p := existing.Possible
+	if possible != nil {
+		p = *possible
+	}
+	so := existing.SortOrder
+	if sortOrder != nil {
+		so = *sortOrder
+	}
+	// earnedSet true + earned nil means "clear the score". earnedSet false means leave alone.
+	var earnedArg interface{}
+	if earnedSet {
+		if earned == nil {
+			earnedArg = nil
+		} else {
+			earnedArg = *earned
+		}
+	} else if existing.Earned != nil {
+		earnedArg = *existing.Earned
+	} else {
+		earnedArg = nil
+	}
+	_, err = d.sql.Exec(
+		`UPDATE grade_categories
+		 SET name=?, weight=?, is_extra_credit=?, earned=?, possible=?, sort_order=?
+		 WHERE id=?`,
+		n, w, ec, earnedArg, p, so, id,
+	)
+	if err != nil {
+		return GradeCategory{}, err
+	}
+	return d.GetCategory(id)
+}
+
+func (d *DB) DeleteCategory(id int64) error {
+	_, err := d.sql.Exec(`DELETE FROM grade_categories WHERE id=?`, id)
+	return err
+}
