@@ -10,14 +10,21 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
 	"notes-tracker/server/db"
 	"notes-tracker/server/handlers"
+	authmw "notes-tracker/server/middleware"
 )
 
 func main() {
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET environment variable is required")
+	}
+	secret := []byte(jwtSecret)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3001"
@@ -32,6 +39,7 @@ func main() {
 		log.Fatalf("open db: %v", err)
 	}
 
+	auth := &handlers.AuthHandler{DB: database, Secret: secret}
 	sem := &handlers.SemesterHandler{DB: database}
 	cls := &handlers.ClassHandler{DB: database, DataDir: dataDir}
 	src := &handlers.SourceHandler{DB: database, DataDir: dataDir}
@@ -44,15 +52,29 @@ func main() {
 	grd := &handlers.GradeHandler{DB: database}
 
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(chimw.Logger)
+	r.Use(chimw.Recoverer)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"http://localhost:5173"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Content-Type"},
+		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Content-Type"},
+		AllowCredentials: true,
 	}))
 
+	// Public auth routes — no JWT required
+	r.Route("/api/v1/auth", func(r chi.Router) {
+		r.Post("/register", auth.Register)
+		r.Post("/login", auth.Login)
+		r.Post("/logout", auth.Logout)
+	})
+
+	// All other API routes require a valid JWT
 	r.Route("/api/v1/", func(r chi.Router) {
+		r.Use(authmw.Authenticated(secret))
+
+		// Current user
+		r.Get("/auth/me", auth.Me)
+
 		// Semesters
 		r.Get("/semesters", sem.List)
 		r.Post("/semesters", sem.Create)
@@ -131,7 +153,6 @@ func main() {
 				path = "index.html"
 			}
 			if _, err := fs.Stat(distFS, path); err != nil {
-				// Not a real file — serve index.html for SPA client-side routing
 				f, err := distFS.(fs.FS).Open("index.html")
 				if err != nil {
 					http.Error(w, "not found", http.StatusNotFound)

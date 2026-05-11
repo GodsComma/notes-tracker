@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"notes-tracker/server/db"
+	authmw "notes-tracker/server/middleware"
 )
 
 type ClassHandler struct {
@@ -13,12 +14,13 @@ type ClassHandler struct {
 }
 
 func (h *ClassHandler) Get(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	c, err := h.DB.GetClass(id)
+	c, err := h.DB.GetClass(id, userID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -31,12 +33,13 @@ func (h *ClassHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClassHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	semID, ok := parseID(r, "semesterID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid semester id")
 		return
 	}
-	classes, err := h.DB.ListClasses(semID)
+	classes, err := h.DB.ListClasses(semID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -48,6 +51,7 @@ func (h *ClassHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClassHandler) Create(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	semID, ok := parseID(r, "semesterID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid semester id")
@@ -67,7 +71,11 @@ func (h *ClassHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if body.Color == "" {
 		body.Color = "#6366f1"
 	}
-	c, err := h.DB.CreateClass(semID, body.Name, body.Code, body.Instructor, body.Schedule, body.Color)
+	c, err := h.DB.CreateClass(semID, userID, body.Name, body.Code, body.Instructor, body.Schedule, body.Color)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "semester not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -76,6 +84,7 @@ func (h *ClassHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClassHandler) Update(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -92,7 +101,7 @@ func (h *ClassHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	existing, err := h.DB.GetClass(id)
+	existing, err := h.DB.GetClass(id, userID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -108,7 +117,7 @@ func (h *ClassHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return fallback
 	}
 	c, err := h.DB.UpdateClass(
-		id,
+		id, userID,
 		pick(body.Name, existing.Name),
 		pick(body.Code, existing.Code),
 		pick(body.Instructor, existing.Instructor),
@@ -127,19 +136,18 @@ func (h *ClassHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClassHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	// Clean up all attachment files (class-level + every source under the class)
-	// before the DB cascade removes the rows.
 	if h.DataDir != "" {
-		if atts, err := h.DB.ListAllAttachmentsForClass(id); err == nil {
+		if atts, err := h.DB.ListAllAttachmentsForClass(id, userID); err == nil {
 			RemoveAttachmentFiles(h.DataDir, atts)
 		}
 	}
-	if err := h.DB.DeleteClass(id); err != nil {
+	if err := h.DB.DeleteClass(id, userID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

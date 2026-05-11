@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"notes-tracker/server/db"
+	authmw "notes-tracker/server/middleware"
 )
 
 type GradeHandler struct {
@@ -14,12 +15,13 @@ type GradeHandler struct {
 // --- Rubric ---
 
 func (h *GradeHandler) GetRubric(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
 		return
 	}
-	rubric, err := h.DB.GetRubric(classID)
+	rubric, err := h.DB.GetRubric(classID, userID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "no rubric")
 		return
@@ -32,6 +34,7 @@ func (h *GradeHandler) GetRubric(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GradeHandler) PutRubric(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
@@ -50,7 +53,11 @@ func (h *GradeHandler) PutRubric(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "grading_type must be 'letter' or 'pass_fail'")
 		return
 	}
-	rubric, err := h.DB.UpsertRubric(classID, body.GradingType, body.PlusMinus, body.Thresholds)
+	rubric, err := h.DB.UpsertRubric(classID, userID, body.GradingType, body.PlusMinus, body.Thresholds)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "class not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -59,12 +66,13 @@ func (h *GradeHandler) PutRubric(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GradeHandler) DeleteRubric(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
 		return
 	}
-	if err := h.DB.DeleteRubric(classID); err != nil {
+	if err := h.DB.DeleteRubric(classID, userID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -74,6 +82,7 @@ func (h *GradeHandler) DeleteRubric(w http.ResponseWriter, r *http.Request) {
 // --- Categories ---
 
 func (h *GradeHandler) AddCategory(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	rubricID, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid rubric id")
@@ -100,7 +109,11 @@ func (h *GradeHandler) AddCategory(w http.ResponseWriter, r *http.Request) {
 	if body.Possible <= 0 {
 		body.Possible = 100
 	}
-	cat, err := h.DB.AddCategory(rubricID, body.Name, body.Weight, body.IsExtraCredit, body.Possible)
+	cat, err := h.DB.AddCategory(rubricID, userID, body.Name, body.Weight, body.IsExtraCredit, body.Possible)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "rubric not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -109,14 +122,12 @@ func (h *GradeHandler) AddCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GradeHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	// Custom decode so we can distinguish "earned omitted" from "earned: null".
-	// json.RawMessage gives us the literal bytes; we look for the "earned" key
-	// in the raw map to decide whether the client meant to set it.
 	var raw map[string]interface{}
 	if err := decode(r, &raw); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -155,7 +166,7 @@ func (h *GradeHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	cat, err := h.DB.UpdateCategory(id, name, weight, isExtraCredit, earned, earnedSet, possible, sortOrder)
+	cat, err := h.DB.UpdateCategory(id, userID, name, weight, isExtraCredit, earned, earnedSet, possible, sortOrder)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -168,12 +179,16 @@ func (h *GradeHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GradeHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.DB.DeleteCategory(id); err != nil {
+	if err := h.DB.DeleteCategory(id, userID); err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

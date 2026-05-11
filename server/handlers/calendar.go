@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"notes-tracker/server/db"
+	authmw "notes-tracker/server/middleware"
 )
 
 type CalendarHandler struct{ DB *db.DB }
@@ -23,6 +24,7 @@ const deadlineColor = "#f43f5e"
 
 // ForClass handles GET /api/classes/:id/calendar?month=YYYY-MM
 func (h *CalendarHandler) ForClass(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
@@ -34,24 +36,24 @@ func (h *CalendarHandler) ForClass(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cls, err := h.DB.GetClass(classID)
+	cls, err := h.DB.GetClass(classID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	sem, err := h.DB.GetSemester(cls.SemesterID)
+	sem, err := h.DB.GetSemester(cls.SemesterID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	sources, err := h.DB.SourcesInRangeForClass(classID, start, end)
+	sources, err := h.DB.SourcesInRangeForClass(classID, userID, start, end)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	meetings, err := h.DB.ListMeetings(classID)
+	meetings, err := h.DB.ListMeetings(classID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -63,6 +65,7 @@ func (h *CalendarHandler) ForClass(w http.ResponseWriter, r *http.Request) {
 
 // ForSemester handles GET /api/semesters/:id/calendar?month=YYYY-MM
 func (h *CalendarHandler) ForSemester(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	semID, ok := parseID(r, "semesterID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid semester id")
@@ -74,18 +77,18 @@ func (h *CalendarHandler) ForSemester(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sem, err := h.DB.GetSemester(semID)
+	sem, err := h.DB.GetSemester(semID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	sources, err := h.DB.SourcesInRangeForSemester(semID, start, end)
+	sources, err := h.DB.SourcesInRangeForSemester(semID, userID, start, end)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	meetings, err := h.DB.ListMeetingsForSemester(semID)
+	meetings, err := h.DB.ListMeetingsForSemester(semID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -100,8 +103,6 @@ func (h *CalendarHandler) ForSemester(w http.ResponseWriter, r *http.Request) {
 			events = append(events, deadlineEvent(s.Source, s.ClassColor, s.ClassName))
 		}
 	}
-	// Clip recurring meetings to the intersection of the requested month
-	// and the semester's term. Empty term bounds → no meeting events.
 	if mStart, mEnd, ok := clipRange(start, end, sem.StartDate, sem.EndDate); ok {
 		for _, m := range meetings {
 			for _, d := range datesForDayOfWeek(m.DayOfWeek, mStart, mEnd) {
@@ -127,8 +128,6 @@ func buildClassEvents(sources []db.Source, meetings []db.ClassMeeting, classColo
 			events = append(events, deadlineEvent(s, classColor, className))
 		}
 	}
-	// Clip recurring meetings to the intersection of the requested month
-	// and the semester's term. Empty term bounds → no meeting events.
 	if mStart, mEnd, ok := clipRange(start, end, semStart, semEnd); ok {
 		for _, m := range meetings {
 			for _, d := range datesForDayOfWeek(m.DayOfWeek, mStart, mEnd) {
@@ -142,9 +141,6 @@ func buildClassEvents(sources []db.Source, meetings []db.ClassMeeting, classColo
 	return events
 }
 
-// clipRange returns the inclusive intersection of [aStart,aEnd] and [bStart,bEnd].
-// If either b-side bound is empty or the ranges don't overlap, ok=false.
-// YYYY-MM-DD strings are lexicographically orderable, so plain string compare works.
 func clipRange(aStart, aEnd, bStart, bEnd string) (start, end string, ok bool) {
 	if bStart == "" || bEnd == "" {
 		return "", "", false
@@ -207,7 +203,7 @@ func meetingEvent(m db.ClassMeeting, classColor, className, date string) db.Cale
 		Title: className,
 		Start: date + "T" + m.StartTime,
 		End:   date + "T" + m.EndTime,
-		Color: classColor + "99", // ~60% opacity via alpha in hex
+		Color: classColor + "99",
 		ExtendedProps: db.CalendarEventProps{
 			Type:      "meeting",
 			ClassID:   m.ClassID,
@@ -226,7 +222,6 @@ func monthRange(month string) (start, end string, err error) {
 		return "", "", err
 	}
 	start = t.Format("2006-01-02")
-	// Last day = first day of next month minus one day
 	last := time.Date(t.Year(), t.Month()+1, 0, 0, 0, 0, 0, time.UTC)
 	end = last.Format("2006-01-02")
 	return start, end, nil

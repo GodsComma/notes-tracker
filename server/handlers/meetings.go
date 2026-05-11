@@ -5,17 +5,19 @@ import (
 	"net/http"
 
 	"notes-tracker/server/db"
+	authmw "notes-tracker/server/middleware"
 )
 
 type MeetingHandler struct{ DB *db.DB }
 
 func (h *MeetingHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "classID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
 		return
 	}
-	meetings, err := h.DB.ListMeetings(classID)
+	meetings, err := h.DB.ListMeetings(classID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -27,6 +29,7 @@ func (h *MeetingHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MeetingHandler) Create(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "classID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
@@ -42,7 +45,11 @@ func (h *MeetingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "start_time and end_time are required")
 		return
 	}
-	m, err := h.DB.CreateMeeting(classID, body.DayOfWeek, body.StartTime, body.EndTime, body.Location)
+	m, err := h.DB.CreateMeeting(classID, userID, body.DayOfWeek, body.StartTime, body.EndTime, body.Location)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "class not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -51,6 +58,7 @@ func (h *MeetingHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MeetingHandler) Update(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -66,7 +74,7 @@ func (h *MeetingHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	m, err := h.DB.UpdateMeeting(id, body.DayOfWeek, body.StartTime, body.EndTime, body.Location)
+	m, err := h.DB.UpdateMeeting(id, userID, body.DayOfWeek, body.StartTime, body.EndTime, body.Location)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -79,12 +87,13 @@ func (h *MeetingHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MeetingHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.DB.DeleteMeeting(id); err != nil {
+	if err := h.DB.DeleteMeeting(id, userID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

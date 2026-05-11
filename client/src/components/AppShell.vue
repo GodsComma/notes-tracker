@@ -146,7 +146,7 @@
 
     <!-- Main content -->
     <div class="flex-1 flex flex-col overflow-hidden">
-      <!-- Top bar (slimmed: just open-sidebar + theme toggle) -->
+      <!-- Top bar -->
       <header class="shrink-0 h-12 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6">
         <button
           v-if="sidebarCollapsed"
@@ -159,7 +159,18 @@
           </svg>
         </button>
         <span v-else />
-        <ThemeToggle />
+        <div class="flex items-center gap-3">
+          <ThemeToggle />
+          <div v-if="authStore.user" class="flex items-center gap-2">
+            <span class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">{{ authStore.user.email }}</span>
+            <button
+              class="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+              @click="authStore.logout()"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
       </header>
 
       <!-- Router view -->
@@ -223,6 +234,7 @@ import { useRouter } from 'vue-router'
 import { useSemesterStore } from '@/stores/semester'
 import { useClassStore } from '@/stores/class'
 import { useFocusStore } from '@/stores/focus'
+import { useAuthStore } from '@/stores/auth'
 import BaseModal from './BaseModal.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import DeepReadPreflight from './DeepReadPreflight.vue'
@@ -234,6 +246,7 @@ const router = useRouter()
 const semesterStore = useSemesterStore()
 const classStore = useClassStore()
 const focusStore = useFocusStore()
+const authStore = useAuthStore()
 
 const showNewSemester = ref(false)
 const semesterPickerOpen = ref(false)

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"notes-tracker/server/db"
+	authmw "notes-tracker/server/middleware"
 )
 
 type AttachmentHandler struct {
@@ -22,9 +23,8 @@ type AttachmentHandler struct {
 var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._\-]`)
 
 func sanitizeFilename(name string) string {
-	name = filepath.Base(name) // strip any directory components from the client
+	name = filepath.Base(name)
 	name = unsafeChars.ReplaceAllString(name, "_")
-	// Prevent hidden files
 	name = strings.TrimLeft(name, ".")
 	if name == "" {
 		name = "file"
@@ -41,7 +41,6 @@ func (h *AttachmentHandler) attachmentPath(a db.Attachment) string {
 }
 
 // RemoveAttachmentFiles deletes the on-disk files for a list of attachments.
-// Called by ClassHandler and SourceHandler before cascade DB deletes.
 func RemoveAttachmentFiles(dataDir string, attachments []db.Attachment) {
 	for _, a := range attachments {
 		dir := filepath.Join(dataDir, "uploads", strconv.FormatInt(a.ID, 10))
@@ -52,7 +51,8 @@ func RemoveAttachmentFiles(dataDir string, attachments []db.Attachment) {
 // --- List ---
 
 func (h *AttachmentHandler) ListLibraryPDFs(w http.ResponseWriter, r *http.Request) {
-	list, err := h.DB.ListAllPDFs()
+	userID := authmw.UserIDFromCtx(r.Context())
+	list, err := h.DB.ListAllPDFs(userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -64,12 +64,13 @@ func (h *AttachmentHandler) ListLibraryPDFs(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *AttachmentHandler) ListForClass(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "classID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
 		return
 	}
-	list, err := h.DB.ListAttachmentsForClass(classID)
+	list, err := h.DB.ListAttachmentsForClass(classID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -81,12 +82,13 @@ func (h *AttachmentHandler) ListForClass(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *AttachmentHandler) ListForSource(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	sourceID, ok := parseID(r, "sourceID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid source id")
 		return
 	}
-	list, err := h.DB.ListAttachmentsForSource(sourceID)
+	list, err := h.DB.ListAttachmentsForSource(sourceID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -100,18 +102,36 @@ func (h *AttachmentHandler) ListForSource(w http.ResponseWriter, r *http.Request
 // --- Upload ---
 
 func (h *AttachmentHandler) UploadToClass(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "classID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
+		return
+	}
+	// Verify class belongs to user before uploading
+	if _, err := h.DB.GetClass(classID, userID); err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "class not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	h.upload(w, r, &classID, nil)
 }
 
 func (h *AttachmentHandler) UploadToSource(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	sourceID, ok := parseID(r, "sourceID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid source id")
+		return
+	}
+	// Verify source belongs to user before uploading
+	if _, err := h.DB.GetSource(sourceID, userID); err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "source not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	h.upload(w, r, nil, &sourceID)
@@ -136,7 +156,6 @@ func (h *AttachmentHandler) upload(w http.ResponseWriter, r *http.Request, class
 		mimeType = "application/octet-stream"
 	}
 
-	// Insert DB record first to claim an ID for the directory name.
 	att, err := h.DB.CreateAttachment(classID, sourceID, safeName, mimeType, 0)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -176,12 +195,13 @@ func (h *AttachmentHandler) upload(w http.ResponseWriter, r *http.Request, class
 // --- Serve ---
 
 func (h *AttachmentHandler) ServeFile(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	att, err := h.DB.GetAttachment(id)
+	att, err := h.DB.GetAttachment(id, userID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -225,12 +245,13 @@ func (h *AttachmentHandler) ServeFile(w http.ResponseWriter, r *http.Request) {
 // --- Delete ---
 
 func (h *AttachmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	att, err := h.DB.GetAttachment(id)
+	att, err := h.DB.GetAttachment(id, userID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -251,12 +272,13 @@ func (h *AttachmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // --- Progress (last viewed page) ---
 
 func (h *AttachmentHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	lastPage, err := h.DB.GetAttachmentLastPage(id)
+	lastPage, err := h.DB.GetAttachmentLastPage(id, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -265,6 +287,7 @@ func (h *AttachmentHandler) GetProgress(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *AttachmentHandler) SaveProgress(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -277,7 +300,7 @@ func (h *AttachmentHandler) SaveProgress(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.DB.SaveAttachmentLastPage(id, body.LastPage); err != nil {
+	if err := h.DB.SaveAttachmentLastPage(id, userID, body.LastPage); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

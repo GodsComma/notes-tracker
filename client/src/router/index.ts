@@ -5,16 +5,18 @@ import SourceView from '@/views/SourceView.vue'
 import SearchView from '@/views/SearchView.vue'
 import SemesterCalendarView from '@/views/SemesterCalendarView.vue'
 import DeepReadView from '@/views/DeepReadView.vue'
+import LoginView from '@/views/LoginView.vue'
 
 export default createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: HomeView },
-    { path: '/calendar', component: SemesterCalendarView },
-    { path: '/library', component: DeepReadView },
+    { path: '/login', component: LoginView },
+    { path: '/', component: HomeView, meta: { requiresAuth: true } },
+    { path: '/calendar', component: SemesterCalendarView, meta: { requiresAuth: true } },
+    { path: '/library', component: DeepReadView, meta: { requiresAuth: true } },
     { path: '/deepread', redirect: '/library' },
-    { path: '/classes/:id', component: ClassView },
-    { path: '/sources/:id', component: SourceView },
-    { path: '/search', component: SearchView }
+    { path: '/classes/:id', component: ClassView, meta: { requiresAuth: true } },
+    { path: '/sources/:id', component: SourceView, meta: { requiresAuth: true } },
+    { path: '/search', component: SearchView, meta: { requiresAuth: true } }
   ]
 })

@@ -18,6 +18,12 @@ type DB struct {
 
 // --- Types ---
 
+type User struct {
+	ID        int64  `json:"id"`
+	Email     string `json:"email"`
+	CreatedAt string `json:"created_at"`
+}
+
 type Semester struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
@@ -45,17 +51,17 @@ type Source struct {
 	DueDate   string `json:"due_date"`
 	Reference string `json:"reference"`
 	SortOrder int    `json:"sort_order"`
-	Priority  int    `json:"priority"`   // 0=None,1=High,2=Medium,3=Low
+	Priority  int    `json:"priority"`
 	Completed bool   `json:"completed"`
 }
 
 type ClassMeeting struct {
-	ID         int64  `json:"id"`
-	ClassID    int64  `json:"class_id"`
-	DayOfWeek  int    `json:"day_of_week"`
-	StartTime  string `json:"start_time"`
-	EndTime    string `json:"end_time"`
-	Location   string `json:"location"`
+	ID        int64  `json:"id"`
+	ClassID   int64  `json:"class_id"`
+	DayOfWeek int    `json:"day_of_week"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+	Location  string `json:"location"`
 }
 
 type SourceWithClass struct {
@@ -150,7 +156,6 @@ type Note struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-// ErrNoteLocked is returned when an Upsert is attempted on a locked note.
 var ErrNoteLocked = errors.New("note is locked")
 
 type SearchResult struct {
@@ -210,8 +215,6 @@ func (d *DB) migrate() error {
 		}
 	}
 
-	// Re-index FTS to include pdfQuote attrs.text (highlighted source passages).
-	// Runs once; the marker prevents repeat runs on subsequent startups.
 	const reindexMark = "!fts-reindex-pdfquote-text"
 	var marker string
 	if d.sql.QueryRow(`SELECT name FROM _migrations WHERE name = ?`, reindexMark).Scan(&marker) == sql.ErrNoRows {
@@ -257,10 +260,40 @@ func (d *DB) reindexAllFTS() error {
 	return tx.Commit()
 }
 
+// --- Users ---
+
+func (d *DB) CreateUser(email, passwordHash string) (User, error) {
+	res, err := d.sql.Exec(`INSERT INTO users (email, password) VALUES (?, ?)`, email, passwordHash)
+	if err != nil {
+		return User{}, err
+	}
+	id, _ := res.LastInsertId()
+	return d.GetUserByID(id)
+}
+
+func (d *DB) GetUserByID(id int64) (User, error) {
+	var u User
+	err := d.sql.QueryRow(`SELECT id, email, created_at FROM users WHERE id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.CreatedAt)
+	return u, err
+}
+
+// GetUserByEmail returns the user and the raw password hash for bcrypt comparison.
+func (d *DB) GetUserByEmail(email string) (User, string, error) {
+	var u User
+	var hash string
+	err := d.sql.QueryRow(`SELECT id, email, password, created_at FROM users WHERE email = ?`, email).
+		Scan(&u.ID, &u.Email, &hash, &u.CreatedAt)
+	return u, hash, err
+}
+
 // --- Semesters ---
 
-func (d *DB) ListSemesters() ([]Semester, error) {
-	rows, err := d.sql.Query(`SELECT id, name, start_date, end_date, created_at FROM semesters ORDER BY id DESC`)
+func (d *DB) ListSemesters(userID int64) ([]Semester, error) {
+	rows, err := d.sql.Query(
+		`SELECT id, name, start_date, end_date, created_at FROM semesters WHERE user_id = ? ORDER BY id DESC`,
+		userID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -276,41 +309,65 @@ func (d *DB) ListSemesters() ([]Semester, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) CreateSemester(name, startDate, endDate string) (Semester, error) {
-	res, err := d.sql.Exec(`INSERT INTO semesters (name, start_date, end_date) VALUES (?, ?, ?)`, name, startDate, endDate)
+func (d *DB) CreateSemester(userID int64, name, startDate, endDate string) (Semester, error) {
+	res, err := d.sql.Exec(
+		`INSERT INTO semesters (user_id, name, start_date, end_date) VALUES (?, ?, ?, ?)`,
+		userID, name, startDate, endDate,
+	)
 	if err != nil {
 		return Semester{}, err
 	}
 	id, _ := res.LastInsertId()
-	return d.GetSemester(id)
+	return d.getSemesterByID(id)
 }
 
-func (d *DB) GetSemester(id int64) (Semester, error) {
+func (d *DB) GetSemester(id, userID int64) (Semester, error) {
 	var s Semester
-	err := d.sql.QueryRow(`SELECT id, name, start_date, end_date, created_at FROM semesters WHERE id = ?`, id).
-		Scan(&s.ID, &s.Name, &s.StartDate, &s.EndDate, &s.CreatedAt)
+	err := d.sql.QueryRow(
+		`SELECT id, name, start_date, end_date, created_at FROM semesters WHERE id = ? AND user_id = ?`,
+		id, userID,
+	).Scan(&s.ID, &s.Name, &s.StartDate, &s.EndDate, &s.CreatedAt)
 	return s, err
 }
 
-func (d *DB) UpdateSemester(id int64, name, startDate, endDate string) (Semester, error) {
-	_, err := d.sql.Exec(`UPDATE semesters SET name=?, start_date=?, end_date=? WHERE id=?`, name, startDate, endDate, id)
+// getSemesterByID is an internal helper used after ownership is already established.
+func (d *DB) getSemesterByID(id int64) (Semester, error) {
+	var s Semester
+	err := d.sql.QueryRow(
+		`SELECT id, name, start_date, end_date, created_at FROM semesters WHERE id = ?`, id,
+	).Scan(&s.ID, &s.Name, &s.StartDate, &s.EndDate, &s.CreatedAt)
+	return s, err
+}
+
+func (d *DB) UpdateSemester(id, userID int64, name, startDate, endDate string) (Semester, error) {
+	res, err := d.sql.Exec(
+		`UPDATE semesters SET name=?, start_date=?, end_date=? WHERE id=? AND user_id=?`,
+		name, startDate, endDate, id, userID,
+	)
 	if err != nil {
 		return Semester{}, err
 	}
-	return d.GetSemester(id)
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Semester{}, sql.ErrNoRows
+	}
+	return d.getSemesterByID(id)
 }
 
-func (d *DB) DeleteSemester(id int64) error {
-	_, err := d.sql.Exec(`DELETE FROM semesters WHERE id=?`, id)
+func (d *DB) DeleteSemester(id, userID int64) error {
+	_, err := d.sql.Exec(`DELETE FROM semesters WHERE id=? AND user_id=?`, id, userID)
 	return err
 }
 
 // --- Classes ---
 
-func (d *DB) ListClasses(semesterID int64) ([]Class, error) {
-	rows, err := d.sql.Query(
-		`SELECT id, semester_id, name, code, instructor, schedule, color FROM classes WHERE semester_id=? ORDER BY id`,
-		semesterID,
+func (d *DB) ListClasses(semesterID, userID int64) ([]Class, error) {
+	rows, err := d.sql.Query(`
+		SELECT c.id, c.semester_id, c.name, c.code, c.instructor, c.schedule, c.color
+		FROM classes c
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE c.semester_id = ? AND s.user_id = ?
+		ORDER BY c.id`,
+		semesterID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -327,7 +384,13 @@ func (d *DB) ListClasses(semesterID int64) ([]Class, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) CreateClass(semesterID int64, name, code, instructor, schedule, color string) (Class, error) {
+func (d *DB) CreateClass(semesterID, userID int64, name, code, instructor, schedule, color string) (Class, error) {
+	var count int
+	if err := d.sql.QueryRow(
+		`SELECT COUNT(*) FROM semesters WHERE id = ? AND user_id = ?`, semesterID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return Class{}, sql.ErrNoRows
+	}
 	res, err := d.sql.Exec(
 		`INSERT INTO classes (semester_id, name, code, instructor, schedule, color) VALUES (?,?,?,?,?,?)`,
 		semesterID, name, code, instructor, schedule, color,
@@ -336,10 +399,23 @@ func (d *DB) CreateClass(semesterID int64, name, code, instructor, schedule, col
 		return Class{}, err
 	}
 	id, _ := res.LastInsertId()
-	return d.GetClass(id)
+	return d.getClassByID(id)
 }
 
-func (d *DB) GetClass(id int64) (Class, error) {
+func (d *DB) GetClass(id, userID int64) (Class, error) {
+	var c Class
+	err := d.sql.QueryRow(`
+		SELECT c.id, c.semester_id, c.name, c.code, c.instructor, c.schedule, c.color
+		FROM classes c
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE c.id = ? AND s.user_id = ?`,
+		id, userID,
+	).Scan(&c.ID, &c.SemesterID, &c.Name, &c.Code, &c.Instructor, &c.Schedule, &c.Color)
+	return c, err
+}
+
+// getClassByID is an internal helper used after ownership is already established.
+func (d *DB) getClassByID(id int64) (Class, error) {
 	var c Class
 	err := d.sql.QueryRow(
 		`SELECT id, semester_id, name, code, instructor, schedule, color FROM classes WHERE id=?`, id,
@@ -347,45 +423,56 @@ func (d *DB) GetClass(id int64) (Class, error) {
 	return c, err
 }
 
-func (d *DB) UpdateClass(id int64, name, code, instructor, schedule, color string) (Class, error) {
-	_, err := d.sql.Exec(
-		`UPDATE classes SET name=?, code=?, instructor=?, schedule=?, color=? WHERE id=?`,
-		name, code, instructor, schedule, color, id,
+func (d *DB) UpdateClass(id, userID int64, name, code, instructor, schedule, color string) (Class, error) {
+	res, err := d.sql.Exec(`
+		UPDATE classes SET name=?, code=?, instructor=?, schedule=?, color=?
+		WHERE id=? AND semester_id IN (SELECT id FROM semesters WHERE user_id=?)`,
+		name, code, instructor, schedule, color, id, userID,
 	)
 	if err != nil {
 		return Class{}, err
 	}
-	return d.GetClass(id)
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Class{}, sql.ErrNoRows
+	}
+	return d.getClassByID(id)
 }
 
-func (d *DB) DeleteClass(id int64) error {
-	_, err := d.sql.Exec(`DELETE FROM classes WHERE id=?`, id)
+func (d *DB) DeleteClass(id, userID int64) error {
+	_, err := d.sql.Exec(`
+		DELETE FROM classes WHERE id=? AND semester_id IN (SELECT id FROM semesters WHERE user_id=?)`,
+		id, userID,
+	)
 	return err
 }
 
 // --- Sources ---
 
-func (d *DB) ListSources(classID int64) ([]Source, error) {
-	rows, err := d.sql.Query(
-		`SELECT id, class_id, type, title, date, due_date, reference, sort_order, priority, completed FROM sources WHERE class_id=? ORDER BY sort_order, date, id`,
-		classID,
+func (d *DB) ListSources(classID, userID int64) ([]Source, error) {
+	rows, err := d.sql.Query(`
+		SELECT s.id, s.class_id, s.type, s.title, s.date, s.due_date, s.reference, s.sort_order, s.priority, s.completed
+		FROM sources s
+		JOIN classes c ON c.id = s.class_id
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE s.class_id = ? AND sem.user_id = ?
+		ORDER BY s.sort_order, s.date, s.id`,
+		classID, userID,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Source
-	for rows.Next() {
-		var s Source
-		if err := rows.Scan(&s.ID, &s.ClassID, &s.Type, &s.Title, &s.Date, &s.DueDate, &s.Reference, &s.SortOrder, &s.Priority, &s.Completed); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
+	return scanSources(rows)
 }
 
-func (d *DB) CreateSource(classID int64, srcType, title, date, dueDate, reference string, priority int) (Source, error) {
+func (d *DB) CreateSource(classID, userID int64, srcType, title, date, dueDate, reference string, priority int) (Source, error) {
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM classes c JOIN semesters s ON s.id = c.semester_id
+		WHERE c.id = ? AND s.user_id = ?`, classID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return Source{}, sql.ErrNoRows
+	}
 	var maxOrder int
 	_ = d.sql.QueryRow(`SELECT COALESCE(MAX(sort_order),0) FROM sources WHERE class_id=?`, classID).Scan(&maxOrder)
 	res, err := d.sql.Exec(
@@ -396,10 +483,24 @@ func (d *DB) CreateSource(classID int64, srcType, title, date, dueDate, referenc
 		return Source{}, err
 	}
 	id, _ := res.LastInsertId()
-	return d.GetSource(id)
+	return d.getSourceByID(id)
 }
 
-func (d *DB) GetSource(id int64) (Source, error) {
+func (d *DB) GetSource(id, userID int64) (Source, error) {
+	var s Source
+	err := d.sql.QueryRow(`
+		SELECT s.id, s.class_id, s.type, s.title, s.date, s.due_date, s.reference, s.sort_order, s.priority, s.completed
+		FROM sources s
+		JOIN classes c ON c.id = s.class_id
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE s.id = ? AND sem.user_id = ?`,
+		id, userID,
+	).Scan(&s.ID, &s.ClassID, &s.Type, &s.Title, &s.Date, &s.DueDate, &s.Reference, &s.SortOrder, &s.Priority, &s.Completed)
+	return s, err
+}
+
+// getSourceByID is an internal helper used after ownership is already established.
+func (d *DB) getSourceByID(id int64) (Source, error) {
 	var s Source
 	err := d.sql.QueryRow(
 		`SELECT id, class_id, type, title, date, due_date, reference, sort_order, priority, completed FROM sources WHERE id=?`, id,
@@ -407,23 +508,41 @@ func (d *DB) GetSource(id int64) (Source, error) {
 	return s, err
 }
 
-func (d *DB) UpdateSource(id int64, srcType, title, date, dueDate, reference string, priority int, completed bool) (Source, error) {
-	_, err := d.sql.Exec(
-		`UPDATE sources SET type=?, title=?, date=?, due_date=?, reference=?, priority=?, completed=? WHERE id=?`,
-		srcType, title, date, dueDate, reference, priority, completed, id,
+func (d *DB) UpdateSource(id, userID int64, srcType, title, date, dueDate, reference string, priority int, completed bool) (Source, error) {
+	res, err := d.sql.Exec(`
+		UPDATE sources SET type=?, title=?, date=?, due_date=?, reference=?, priority=?, completed=?
+		WHERE id=? AND class_id IN (
+			SELECT c.id FROM classes c JOIN semesters s ON s.id = c.semester_id WHERE s.user_id=?
+		)`,
+		srcType, title, date, dueDate, reference, priority, completed, id, userID,
 	)
 	if err != nil {
 		return Source{}, err
 	}
-	return d.GetSource(id)
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Source{}, sql.ErrNoRows
+	}
+	return d.getSourceByID(id)
 }
 
-func (d *DB) DeleteSource(id int64) error {
-	_, err := d.sql.Exec(`DELETE FROM sources WHERE id=?`, id)
+func (d *DB) DeleteSource(id, userID int64) error {
+	_, err := d.sql.Exec(`
+		DELETE FROM sources WHERE id=? AND class_id IN (
+			SELECT c.id FROM classes c JOIN semesters s ON s.id = c.semester_id WHERE s.user_id=?
+		)`,
+		id, userID,
+	)
 	return err
 }
 
-func (d *DB) ReorderSources(classID int64, ids []int64) error {
+func (d *DB) ReorderSources(classID, userID int64, ids []int64) error {
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM classes c JOIN semesters s ON s.id = c.semester_id
+		WHERE c.id = ? AND s.user_id = ?`, classID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return sql.ErrNoRows
+	}
 	tx, err := d.sql.Begin()
 	if err != nil {
 		return err
@@ -439,10 +558,15 @@ func (d *DB) ReorderSources(classID int64, ids []int64) error {
 
 // --- Class Meetings ---
 
-func (d *DB) ListMeetings(classID int64) ([]ClassMeeting, error) {
-	rows, err := d.sql.Query(
-		`SELECT id, class_id, day_of_week, start_time, end_time, location FROM class_meetings WHERE class_id=? ORDER BY day_of_week, start_time`,
-		classID,
+func (d *DB) ListMeetings(classID, userID int64) ([]ClassMeeting, error) {
+	rows, err := d.sql.Query(`
+		SELECT m.id, m.class_id, m.day_of_week, m.start_time, m.end_time, m.location
+		FROM class_meetings m
+		JOIN classes c ON c.id = m.class_id
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE m.class_id = ? AND s.user_id = ?
+		ORDER BY m.day_of_week, m.start_time`,
+		classID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -459,7 +583,14 @@ func (d *DB) ListMeetings(classID int64) ([]ClassMeeting, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) CreateMeeting(classID int64, dayOfWeek int, startTime, endTime, location string) (ClassMeeting, error) {
+func (d *DB) CreateMeeting(classID, userID int64, dayOfWeek int, startTime, endTime, location string) (ClassMeeting, error) {
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM classes c JOIN semesters s ON s.id = c.semester_id
+		WHERE c.id = ? AND s.user_id = ?`, classID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return ClassMeeting{}, sql.ErrNoRows
+	}
 	res, err := d.sql.Exec(
 		`INSERT INTO class_meetings (class_id, day_of_week, start_time, end_time, location) VALUES (?,?,?,?,?)`,
 		classID, dayOfWeek, startTime, endTime, location,
@@ -468,10 +599,24 @@ func (d *DB) CreateMeeting(classID int64, dayOfWeek int, startTime, endTime, loc
 		return ClassMeeting{}, err
 	}
 	id, _ := res.LastInsertId()
-	return d.GetMeeting(id)
+	return d.getMeetingByID(id)
 }
 
-func (d *DB) GetMeeting(id int64) (ClassMeeting, error) {
+func (d *DB) GetMeeting(id, userID int64) (ClassMeeting, error) {
+	var m ClassMeeting
+	err := d.sql.QueryRow(`
+		SELECT m.id, m.class_id, m.day_of_week, m.start_time, m.end_time, m.location
+		FROM class_meetings m
+		JOIN classes c ON c.id = m.class_id
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE m.id = ? AND s.user_id = ?`,
+		id, userID,
+	).Scan(&m.ID, &m.ClassID, &m.DayOfWeek, &m.StartTime, &m.EndTime, &m.Location)
+	return m, err
+}
+
+// getMeetingByID is an internal helper used after ownership is already established.
+func (d *DB) getMeetingByID(id int64) (ClassMeeting, error) {
 	var m ClassMeeting
 	err := d.sql.QueryRow(
 		`SELECT id, class_id, day_of_week, start_time, end_time, location FROM class_meetings WHERE id=?`, id,
@@ -479,35 +624,48 @@ func (d *DB) GetMeeting(id int64) (ClassMeeting, error) {
 	return m, err
 }
 
-func (d *DB) UpdateMeeting(id int64, dayOfWeek int, startTime, endTime, location string) (ClassMeeting, error) {
-	_, err := d.sql.Exec(
-		`UPDATE class_meetings SET day_of_week=?, start_time=?, end_time=?, location=? WHERE id=?`,
-		dayOfWeek, startTime, endTime, location, id,
+func (d *DB) UpdateMeeting(id, userID int64, dayOfWeek int, startTime, endTime, location string) (ClassMeeting, error) {
+	res, err := d.sql.Exec(`
+		UPDATE class_meetings SET day_of_week=?, start_time=?, end_time=?, location=?
+		WHERE id=? AND class_id IN (
+			SELECT c.id FROM classes c JOIN semesters s ON s.id = c.semester_id WHERE s.user_id=?
+		)`,
+		dayOfWeek, startTime, endTime, location, id, userID,
 	)
 	if err != nil {
 		return ClassMeeting{}, err
 	}
-	return d.GetMeeting(id)
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ClassMeeting{}, sql.ErrNoRows
+	}
+	return d.getMeetingByID(id)
 }
 
-func (d *DB) DeleteMeeting(id int64) error {
-	_, err := d.sql.Exec(`DELETE FROM class_meetings WHERE id=?`, id)
+func (d *DB) DeleteMeeting(id, userID int64) error {
+	_, err := d.sql.Exec(`
+		DELETE FROM class_meetings WHERE id=? AND class_id IN (
+			SELECT c.id FROM classes c JOIN semesters s ON s.id = c.semester_id WHERE s.user_id=?
+		)`,
+		id, userID,
+	)
 	return err
 }
 
 // --- Calendar queries ---
 
-func (d *DB) SourcesInRangeForClass(classID int64, start, end string) ([]Source, error) {
+func (d *DB) SourcesInRangeForClass(classID, userID int64, start, end string) ([]Source, error) {
 	rows, err := d.sql.Query(`
-		SELECT id, class_id, type, title, date, due_date, reference, sort_order, priority, completed
-		FROM sources
-		WHERE class_id = ?
+		SELECT s.id, s.class_id, s.type, s.title, s.date, s.due_date, s.reference, s.sort_order, s.priority, s.completed
+		FROM sources s
+		JOIN classes c ON c.id = s.class_id
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE s.class_id = ? AND sem.user_id = ?
 		  AND (
-		    (date != '' AND date BETWEEN ? AND ?)
-		    OR (due_date != '' AND due_date BETWEEN ? AND ?)
+		    (s.date != '' AND s.date BETWEEN ? AND ?)
+		    OR (s.due_date != '' AND s.due_date BETWEEN ? AND ?)
 		  )
-		ORDER BY date, due_date`,
-		classID, start, end, start, end,
+		ORDER BY s.date, s.due_date`,
+		classID, userID, start, end, start, end,
 	)
 	if err != nil {
 		return nil, err
@@ -516,19 +674,20 @@ func (d *DB) SourcesInRangeForClass(classID int64, start, end string) ([]Source,
 	return scanSources(rows)
 }
 
-func (d *DB) SourcesInRangeForSemester(semesterID int64, start, end string) ([]SourceWithClass, error) {
+func (d *DB) SourcesInRangeForSemester(semesterID, userID int64, start, end string) ([]SourceWithClass, error) {
 	rows, err := d.sql.Query(`
 		SELECT s.id, s.class_id, s.type, s.title, s.date, s.due_date, s.reference, s.sort_order, s.priority, s.completed,
 		       c.name, c.color
 		FROM sources s
 		JOIN classes c ON c.id = s.class_id
-		WHERE c.semester_id = ?
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE c.semester_id = ? AND sem.user_id = ?
 		  AND (
 		    (s.date != '' AND s.date BETWEEN ? AND ?)
 		    OR (s.due_date != '' AND s.due_date BETWEEN ? AND ?)
 		  )
 		ORDER BY s.date, s.due_date`,
-		semesterID, start, end, start, end,
+		semesterID, userID, start, end, start, end,
 	)
 	if err != nil {
 		return nil, err
@@ -545,18 +704,19 @@ func (d *DB) SourcesInRangeForSemester(semesterID int64, start, end string) ([]S
 	return out, rows.Err()
 }
 
-func (d *DB) ListSourcesForSemester(semesterID int64) ([]SourceWithClass, error) {
+func (d *DB) ListSourcesForSemester(semesterID, userID int64) ([]SourceWithClass, error) {
 	rows, err := d.sql.Query(`
 		SELECT s.id, s.class_id, s.type, s.title, s.date, s.due_date, s.reference, s.sort_order, s.priority, s.completed,
 		       c.name, c.color
 		FROM sources s
 		JOIN classes c ON c.id = s.class_id
-		WHERE c.semester_id = ?
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE c.semester_id = ? AND sem.user_id = ?
 		ORDER BY
 		  CASE WHEN s.priority = 0 THEN 9999 ELSE s.priority END,
 		  CASE WHEN s.due_date = '' THEN '9999-99-99' ELSE s.due_date END,
 		  s.title`,
-		semesterID,
+		semesterID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -576,14 +736,15 @@ func (d *DB) ListSourcesForSemester(semesterID int64) ([]SourceWithClass, error)
 	return out, rows.Err()
 }
 
-func (d *DB) ListMeetingsForSemester(semesterID int64) ([]ClassMeetingWithClass, error) {
+func (d *DB) ListMeetingsForSemester(semesterID, userID int64) ([]ClassMeetingWithClass, error) {
 	rows, err := d.sql.Query(`
 		SELECT m.id, m.class_id, m.day_of_week, m.start_time, m.end_time, m.location, c.color, c.name
 		FROM class_meetings m
 		JOIN classes c ON c.id = m.class_id
-		WHERE c.semester_id = ?
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE c.semester_id = ? AND sem.user_id = ?
 		ORDER BY m.day_of_week, m.start_time`,
-		semesterID,
+		semesterID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -626,39 +787,15 @@ func (d *DB) scanAttachments(rows *sql.Rows) ([]Attachment, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) ListAttachmentsForClass(classID int64) ([]Attachment, error) {
-	rows, err := d.sql.Query(
-		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at
-		 FROM attachments WHERE class_id=? ORDER BY created_at`, classID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return d.scanAttachments(rows)
-}
-
-func (d *DB) ListAttachmentsForSource(sourceID int64) ([]Attachment, error) {
-	rows, err := d.sql.Query(
-		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at
-		 FROM attachments WHERE source_id=? ORDER BY created_at`, sourceID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return d.scanAttachments(rows)
-}
-
-// ListAllAttachmentsForClass returns every attachment that will be orphaned on
-// disk when a class is deleted — both class-level and all its sources' files.
-func (d *DB) ListAllAttachmentsForClass(classID int64) ([]Attachment, error) {
+func (d *DB) ListAttachmentsForClass(classID, userID int64) ([]Attachment, error) {
 	rows, err := d.sql.Query(`
 		SELECT a.id, a.class_id, a.source_id, a.filename, a.mime_type, a.size_bytes, a.created_at
 		FROM attachments a
-		LEFT JOIN sources s ON s.id = a.source_id
-		WHERE a.class_id = ? OR (a.source_id IS NOT NULL AND s.class_id = ?)`,
-		classID, classID,
+		JOIN classes c ON c.id = a.class_id
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE a.class_id = ? AND s.user_id = ?
+		ORDER BY a.created_at`,
+		classID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -667,22 +804,57 @@ func (d *DB) ListAllAttachmentsForClass(classID int64) ([]Attachment, error) {
 	return d.scanAttachments(rows)
 }
 
-// ListAllPDFs returns every PDF attachment in the system with its parent
-// class/source context for the Deep Read library shelf.
-func (d *DB) ListAllPDFs() ([]PDFLibraryItem, error) {
+func (d *DB) ListAttachmentsForSource(sourceID, userID int64) ([]Attachment, error) {
+	rows, err := d.sql.Query(`
+		SELECT a.id, a.class_id, a.source_id, a.filename, a.mime_type, a.size_bytes, a.created_at
+		FROM attachments a
+		JOIN sources src ON src.id = a.source_id
+		JOIN classes c ON c.id = src.class_id
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE a.source_id = ? AND s.user_id = ?
+		ORDER BY a.created_at`,
+		sourceID, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return d.scanAttachments(rows)
+}
+
+func (d *DB) ListAllAttachmentsForClass(classID, userID int64) ([]Attachment, error) {
+	rows, err := d.sql.Query(`
+		SELECT a.id, a.class_id, a.source_id, a.filename, a.mime_type, a.size_bytes, a.created_at
+		FROM attachments a
+		LEFT JOIN sources src ON src.id = a.source_id
+		JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE c.id = ? AND s.user_id = ?`,
+		classID, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return d.scanAttachments(rows)
+}
+
+func (d *DB) ListAllPDFs(userID int64) ([]PDFLibraryItem, error) {
 	rows, err := d.sql.Query(`
 		SELECT a.id, a.filename, a.size_bytes, a.created_at,
 		       COALESCE(c.id, 0) AS cid,
 		       COALESCE(c.name, ''),
 		       COALESCE(c.color, ''),
 		       a.source_id,
-		       COALESCE(s.title, '')
+		       COALESCE(src.title, '')
 		FROM attachments a
-		LEFT JOIN sources s ON s.id = a.source_id
-		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, s.class_id)
-		WHERE a.mime_type = 'application/pdf'
-		ORDER BY a.created_at DESC
-	`)
+		LEFT JOIN sources src ON src.id = a.source_id
+		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE a.mime_type = 'application/pdf' AND s.user_id = ?
+		ORDER BY a.created_at DESC`,
+		userID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -702,11 +874,16 @@ func (d *DB) ListAllPDFs() ([]PDFLibraryItem, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) GetAttachment(id int64) (Attachment, error) {
+func (d *DB) GetAttachment(id, userID int64) (Attachment, error) {
 	var a Attachment
-	err := d.sql.QueryRow(
-		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at
-		 FROM attachments WHERE id=?`, id,
+	err := d.sql.QueryRow(`
+		SELECT a.id, a.class_id, a.source_id, a.filename, a.mime_type, a.size_bytes, a.created_at
+		FROM attachments a
+		LEFT JOIN sources src ON src.id = a.source_id
+		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND s.user_id = ?`,
+		id, userID,
 	).Scan(&a.ID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt)
 	return a, err
 }
@@ -720,7 +897,16 @@ func (d *DB) CreateAttachment(classID, sourceID *int64, filename, mimeType strin
 		return Attachment{}, err
 	}
 	id, _ := res.LastInsertId()
-	return d.GetAttachment(id)
+	return d.getAttachmentByID(id)
+}
+
+// getAttachmentByID is an internal helper used after the record is just created.
+func (d *DB) getAttachmentByID(id int64) (Attachment, error) {
+	var a Attachment
+	err := d.sql.QueryRow(
+		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at FROM attachments WHERE id=?`, id,
+	).Scan(&a.ID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt)
+	return a, err
 }
 
 func (d *DB) UpdateAttachmentSize(id, sizeBytes int64) error {
@@ -735,21 +921,37 @@ func (d *DB) DeleteAttachment(id int64) error {
 
 // --- Attachment Progress (last page viewed) ---
 
-func (d *DB) GetAttachmentLastPage(attachmentID int64) (int, error) {
+func (d *DB) GetAttachmentLastPage(attachmentID, userID int64) (int, error) {
 	var lastPage int
-	err := d.sql.QueryRow(
-		`SELECT last_page FROM attachment_progress WHERE attachment_id=?`, attachmentID,
+	err := d.sql.QueryRow(`
+		SELECT ap.last_page
+		FROM attachment_progress ap
+		JOIN attachments a ON a.id = ap.attachment_id
+		LEFT JOIN sources src ON src.id = a.source_id
+		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE ap.attachment_id = ? AND s.user_id = ?`,
+		attachmentID, userID,
 	).Scan(&lastPage)
 	if err == sql.ErrNoRows {
 		return 1, nil
 	}
-	if err != nil {
-		return 0, err
-	}
-	return lastPage, nil
+	return lastPage, err
 }
 
-func (d *DB) SaveAttachmentLastPage(attachmentID int64, lastPage int) error {
+func (d *DB) SaveAttachmentLastPage(attachmentID, userID int64, lastPage int) error {
+	// Verify ownership first
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM attachments a
+		LEFT JOIN sources src ON src.id = a.source_id
+		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND s.user_id = ?`,
+		attachmentID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return sql.ErrNoRows
+	}
 	if lastPage < 1 {
 		lastPage = 1
 	}
@@ -765,19 +967,19 @@ func (d *DB) SaveAttachmentLastPage(attachmentID int64, lastPage int) error {
 
 // --- Focus Sessions ---
 
-func (d *DB) LogFocusSession(date string, durationSec int, attachmentID int64, filename string, completed bool) (FocusSession, error) {
+func (d *DB) LogFocusSession(userID int64, date string, durationSec int, attachmentID int64, filename string, completed bool) (FocusSession, error) {
 	res, err := d.sql.Exec(
-		`INSERT INTO focus_sessions (date, duration_sec, attachment_id, filename, completed) VALUES (?,?,?,?,?)`,
-		date, durationSec, attachmentID, filename, completed,
+		`INSERT INTO focus_sessions (user_id, date, duration_sec, attachment_id, filename, completed) VALUES (?,?,?,?,?,?)`,
+		userID, date, durationSec, attachmentID, filename, completed,
 	)
 	if err != nil {
 		return FocusSession{}, err
 	}
 	id, _ := res.LastInsertId()
-	return d.GetFocusSession(id)
+	return d.getFocusSessionByID(id)
 }
 
-func (d *DB) GetFocusSession(id int64) (FocusSession, error) {
+func (d *DB) getFocusSessionByID(id int64) (FocusSession, error) {
 	var s FocusSession
 	err := d.sql.QueryRow(
 		`SELECT id, date, duration_sec, attachment_id, filename, completed, created_at FROM focus_sessions WHERE id=?`, id,
@@ -785,9 +987,11 @@ func (d *DB) GetFocusSession(id int64) (FocusSession, error) {
 	return s, err
 }
 
-func (d *DB) ListFocusSessions() ([]FocusSession, error) {
+func (d *DB) ListFocusSessions(userID int64) ([]FocusSession, error) {
 	rows, err := d.sql.Query(
-		`SELECT id, date, duration_sec, attachment_id, filename, completed, created_at FROM focus_sessions ORDER BY created_at DESC`,
+		`SELECT id, date, duration_sec, attachment_id, filename, completed, created_at
+		 FROM focus_sessions WHERE user_id = ? ORDER BY created_at DESC`,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -809,19 +1013,36 @@ func (d *DB) ListFocusSessions() ([]FocusSession, error) {
 
 // --- Notes ---
 
-func (d *DB) GetNote(sourceID int64) (Note, error) {
+func (d *DB) GetNote(sourceID, userID int64) (Note, error) {
 	var n Note
-	err := d.sql.QueryRow(
-		`SELECT id, source_id, body, locked, created_at, updated_at FROM notes WHERE source_id=?`, sourceID,
+	err := d.sql.QueryRow(`
+		SELECT n.id, n.source_id, n.body, n.locked, n.created_at, n.updated_at
+		FROM notes n
+		JOIN sources s ON s.id = n.source_id
+		JOIN classes c ON c.id = s.class_id
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE n.source_id = ? AND sem.user_id = ?`,
+		sourceID, userID,
 	).Scan(&n.ID, &n.SourceID, &n.Body, &n.Locked, &n.CreatedAt, &n.UpdatedAt)
 	return n, err
 }
 
-func (d *DB) UpsertNote(sourceID int64, body string) (Note, error) {
-	// Enforce lock — clients shouldn't fire this when locked, but treat the server as source of truth.
+func (d *DB) UpsertNote(sourceID, userID int64, body string) (Note, error) {
+	// Verify ownership and check lock in one query.
 	var locked bool
-	err := d.sql.QueryRow(`SELECT locked FROM notes WHERE source_id=?`, sourceID).Scan(&locked)
-	if err != nil && err != sql.ErrNoRows {
+	err := d.sql.QueryRow(`
+		SELECT COALESCE(n.locked, 0)
+		FROM sources s
+		JOIN classes c ON c.id = s.class_id
+		JOIN semesters sem ON sem.id = c.semester_id
+		LEFT JOIN notes n ON n.source_id = s.id
+		WHERE s.id = ? AND sem.user_id = ?`,
+		sourceID, userID,
+	).Scan(&locked)
+	if err == sql.ErrNoRows {
+		return Note{}, sql.ErrNoRows
+	}
+	if err != nil {
 		return Note{}, err
 	}
 	if locked {
@@ -837,7 +1058,7 @@ func (d *DB) UpsertNote(sourceID int64, body string) (Note, error) {
 	if err != nil {
 		return Note{}, err
 	}
-	n, err := d.GetNote(sourceID)
+	n, err := d.GetNote(sourceID, userID)
 	if err != nil {
 		return Note{}, err
 	}
@@ -845,9 +1066,18 @@ func (d *DB) UpsertNote(sourceID int64, body string) (Note, error) {
 	return n, nil
 }
 
-// SetNoteLock toggles the lock flag. Creates an empty note row first if none exists,
-// so a user can lock a source's note before having authored anything.
-func (d *DB) SetNoteLock(sourceID int64, locked bool) (Note, error) {
+func (d *DB) SetNoteLock(sourceID, userID int64, locked bool) (Note, error) {
+	// Verify ownership
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM sources s
+		JOIN classes c ON c.id = s.class_id
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE s.id = ? AND sem.user_id = ?`,
+		sourceID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return Note{}, sql.ErrNoRows
+	}
 	_, err := d.sql.Exec(`
 		INSERT INTO notes (source_id, body, locked, updated_at)
 		VALUES (?, '', ?, datetime('now'))
@@ -856,7 +1086,7 @@ func (d *DB) SetNoteLock(sourceID int64, locked bool) (Note, error) {
 	if err != nil {
 		return Note{}, err
 	}
-	return d.GetNote(sourceID)
+	return d.GetNote(sourceID, userID)
 }
 
 func (d *DB) syncFTS(noteID int64, text string) error {
@@ -876,7 +1106,7 @@ func (d *DB) syncFTS(noteID int64, text string) error {
 
 // --- Search ---
 
-func (d *DB) Search(query string, classID int64) ([]SearchResult, error) {
+func (d *DB) Search(userID int64, query string, classID int64) ([]SearchResult, error) {
 	seen := map[int64]bool{}
 	var out []SearchResult
 
@@ -888,8 +1118,9 @@ func (d *DB) Search(query string, classID int64) ([]SearchResult, error) {
 		JOIN notes n ON CAST(nf.note_id AS INTEGER) = n.id
 		JOIN sources s ON s.id = n.source_id
 		JOIN classes c ON c.id = s.class_id
-		WHERE notes_fts MATCH ?`
-	args1 := []any{query}
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE notes_fts MATCH ? AND sem.user_id = ?`
+	args1 := []any{query, userID}
 	if classID > 0 {
 		q1 += " AND c.id = ?"
 		args1 = append(args1, classID)
@@ -913,15 +1144,16 @@ func (d *DB) Search(query string, classID int64) ([]SearchResult, error) {
 		return nil, err
 	}
 
-	// 2. Source title / reference LIKE match (sources not already found via FTS)
+	// 2. Source title / reference LIKE match
 	like := "%" + strings.ToLower(query) + "%"
 	q2 := `
 		SELECT n.id, n.source_id, s.title, COALESCE(s.date, ''), c.id, c.name, c.color
 		FROM notes n
 		JOIN sources s ON s.id = n.source_id
 		JOIN classes c ON c.id = s.class_id
-		WHERE (LOWER(s.title) LIKE ? OR LOWER(s.reference) LIKE ?)`
-	args2 := []any{like, like}
+		JOIN semesters sem ON sem.id = c.semester_id
+		WHERE (LOWER(s.title) LIKE ? OR LOWER(s.reference) LIKE ?) AND sem.user_id = ?`
+	args2 := []any{like, like, userID}
 	if classID > 0 {
 		q2 += " AND c.id = ?"
 		args2 = append(args2, classID)
@@ -970,7 +1202,6 @@ func walkNode(node map[string]any, sb *strings.Builder) {
 		}
 		return
 	}
-	// Index the highlighted source passage stored in pdfQuote attrs.text
 	if t, _ := node["type"].(string); t == "pdfQuote" {
 		if attrs, ok := node["attrs"].(map[string]any); ok {
 			if quoted, _ := attrs["text"].(string); quoted != "" {
@@ -991,11 +1222,15 @@ func walkNode(node map[string]any, sb *strings.Builder) {
 
 // --- Grades ---
 
-func (d *DB) GetRubric(classID int64) (GradeRubric, error) {
+func (d *DB) GetRubric(classID, userID int64) (GradeRubric, error) {
 	var r GradeRubric
-	err := d.sql.QueryRow(
-		`SELECT id, class_id, grading_type, plus_minus, thresholds, created_at
-		 FROM grade_rubrics WHERE class_id=?`, classID,
+	err := d.sql.QueryRow(`
+		SELECT gr.id, gr.class_id, gr.grading_type, gr.plus_minus, gr.thresholds, gr.created_at
+		FROM grade_rubrics gr
+		JOIN classes c ON c.id = gr.class_id
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE gr.class_id = ? AND s.user_id = ?`,
+		classID, userID,
 	).Scan(&r.ID, &r.ClassID, &r.GradingType, &r.PlusMinus, &r.Thresholds, &r.CreatedAt)
 	if err != nil {
 		return r, err
@@ -1033,10 +1268,14 @@ func (d *DB) listCategories(rubricID int64) ([]GradeCategory, error) {
 	return out, rows.Err()
 }
 
-// UpsertRubric creates a rubric for the class if one does not exist, or
-// updates the meta-fields (grading_type / plus_minus / thresholds) if it does.
-// Categories are managed separately.
-func (d *DB) UpsertRubric(classID int64, gradingType string, plusMinus bool, thresholds string) (GradeRubric, error) {
+func (d *DB) UpsertRubric(classID, userID int64, gradingType string, plusMinus bool, thresholds string) (GradeRubric, error) {
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM classes c JOIN semesters s ON s.id = c.semester_id
+		WHERE c.id = ? AND s.user_id = ?`, classID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return GradeRubric{}, sql.ErrNoRows
+	}
 	_, err := d.sql.Exec(`
 		INSERT INTO grade_rubrics (class_id, grading_type, plus_minus, thresholds)
 		VALUES (?, ?, ?, ?)
@@ -1048,15 +1287,29 @@ func (d *DB) UpsertRubric(classID int64, gradingType string, plusMinus bool, thr
 	if err != nil {
 		return GradeRubric{}, err
 	}
-	return d.GetRubric(classID)
+	return d.GetRubric(classID, userID)
 }
 
-func (d *DB) DeleteRubric(classID int64) error {
-	_, err := d.sql.Exec(`DELETE FROM grade_rubrics WHERE class_id=?`, classID)
+func (d *DB) DeleteRubric(classID, userID int64) error {
+	_, err := d.sql.Exec(`
+		DELETE FROM grade_rubrics WHERE class_id=? AND class_id IN (
+			SELECT c.id FROM classes c JOIN semesters s ON s.id = c.semester_id WHERE s.user_id=?
+		)`,
+		classID, userID,
+	)
 	return err
 }
 
-func (d *DB) AddCategory(rubricID int64, name string, weight float64, isExtraCredit bool, possible float64) (GradeCategory, error) {
+func (d *DB) AddCategory(rubricID, userID int64, name string, weight float64, isExtraCredit bool, possible float64) (GradeCategory, error) {
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM grade_rubrics gr
+		JOIN classes c ON c.id = gr.class_id
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE gr.id = ? AND s.user_id = ?`, rubricID, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return GradeCategory{}, sql.ErrNoRows
+	}
 	var maxOrder int
 	_ = d.sql.QueryRow(`SELECT COALESCE(MAX(sort_order),-1) FROM grade_categories WHERE rubric_id=?`, rubricID).Scan(&maxOrder)
 	res, err := d.sql.Exec(
@@ -1088,10 +1341,8 @@ func (d *DB) GetCategory(id int64) (GradeCategory, error) {
 	return c, nil
 }
 
-// UpdateCategory accepts pointers so callers can update only the fields they
-// pass — nil fields are left at their existing value.
 func (d *DB) UpdateCategory(
-	id int64,
+	id, userID int64,
 	name *string,
 	weight *float64,
 	isExtraCredit *bool,
@@ -1102,6 +1353,17 @@ func (d *DB) UpdateCategory(
 	existing, err := d.GetCategory(id)
 	if err != nil {
 		return GradeCategory{}, err
+	}
+	// Verify ownership
+	var count int
+	if err := d.sql.QueryRow(`
+		SELECT COUNT(*) FROM grade_categories gc
+		JOIN grade_rubrics gr ON gr.id = gc.rubric_id
+		JOIN classes c ON c.id = gr.class_id
+		JOIN semesters s ON s.id = c.semester_id
+		WHERE gc.id = ? AND s.user_id = ?`, id, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return GradeCategory{}, sql.ErrNoRows
 	}
 	n := existing.Name
 	if name != nil {
@@ -1123,7 +1385,6 @@ func (d *DB) UpdateCategory(
 	if sortOrder != nil {
 		so = *sortOrder
 	}
-	// earnedSet true + earned nil means "clear the score". earnedSet false means leave alone.
 	var earnedArg interface{}
 	if earnedSet {
 		if earned == nil {
@@ -1148,7 +1409,21 @@ func (d *DB) UpdateCategory(
 	return d.GetCategory(id)
 }
 
-func (d *DB) DeleteCategory(id int64) error {
-	_, err := d.sql.Exec(`DELETE FROM grade_categories WHERE id=?`, id)
-	return err
+func (d *DB) DeleteCategory(id, userID int64) error {
+	res, err := d.sql.Exec(`
+		DELETE FROM grade_categories WHERE id=? AND rubric_id IN (
+			SELECT gr.id FROM grade_rubrics gr
+			JOIN classes c ON c.id = gr.class_id
+			JOIN semesters s ON s.id = c.semester_id
+			WHERE s.user_id = ?
+		)`,
+		id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }

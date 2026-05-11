@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"notes-tracker/server/db"
+	authmw "notes-tracker/server/middleware"
 )
 
 type SourceHandler struct {
@@ -13,12 +14,13 @@ type SourceHandler struct {
 }
 
 func (h *SourceHandler) Get(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	s, err := h.DB.GetSource(id)
+	s, err := h.DB.GetSource(id, userID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -31,12 +33,13 @@ func (h *SourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SourceHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "classID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
 		return
 	}
-	sources, err := h.DB.ListSources(classID)
+	sources, err := h.DB.ListSources(classID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -48,6 +51,7 @@ func (h *SourceHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "classID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
@@ -68,7 +72,11 @@ func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if body.Type == "" {
 		body.Type = "Lecture"
 	}
-	s, err := h.DB.CreateSource(classID, body.Type, body.Title, body.Date, body.DueDate, body.Reference, body.Priority)
+	s, err := h.DB.CreateSource(classID, userID, body.Type, body.Title, body.Date, body.DueDate, body.Reference, body.Priority)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "class not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -77,12 +85,13 @@ func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	existing, err := h.DB.GetSource(id)
+	existing, err := h.DB.GetSource(id, userID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -122,7 +131,7 @@ func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		return fallback
 	}
-	s, err := h.DB.UpdateSource(id,
+	s, err := h.DB.UpdateSource(id, userID,
 		pick(body.Type, existing.Type),
 		pick(body.Title, existing.Title),
 		pick(body.Date, existing.Date),
@@ -139,12 +148,13 @@ func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SourceHandler) ListForSemester(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	semID, ok := parseID(r, "semesterID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid semester id")
 		return
 	}
-	sources, err := h.DB.ListSourcesForSemester(semID)
+	sources, err := h.DB.ListSourcesForSemester(semID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -153,17 +163,18 @@ func (h *SourceHandler) ListForSemester(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	if h.DataDir != "" {
-		if atts, err := h.DB.ListAttachmentsForSource(id); err == nil {
+		if atts, err := h.DB.ListAttachmentsForSource(id, userID); err == nil {
 			RemoveAttachmentFiles(h.DataDir, atts)
 		}
 	}
-	if err := h.DB.DeleteSource(id); err != nil {
+	if err := h.DB.DeleteSource(id, userID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -171,6 +182,7 @@ func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SourceHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	classID, ok := parseID(r, "classID")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid class id")
@@ -183,7 +195,7 @@ func (h *SourceHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.DB.ReorderSources(classID, body.IDs); err != nil {
+	if err := h.DB.ReorderSources(classID, userID, body.IDs); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

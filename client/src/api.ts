@@ -140,10 +140,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData
   const res = await fetch(`/api/v1/${path}`, {
     ...init,
+    credentials: 'include',
     headers: isFormData
       ? (init?.headers ?? {})
       : { 'Content-Type': 'application/json', ...(init?.headers ?? {}) }
   })
+  if (res.status === 401) {
+    // Token expired or missing — redirect to login without import cycle
+    window.location.href = '/login'
+    return undefined as T
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(err.error ?? res.statusText)

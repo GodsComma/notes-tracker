@@ -5,12 +5,14 @@ import (
 	"net/http"
 
 	"notes-tracker/server/db"
+	authmw "notes-tracker/server/middleware"
 )
 
 type SemesterHandler struct{ DB *db.DB }
 
 func (h *SemesterHandler) List(w http.ResponseWriter, r *http.Request) {
-	semesters, err := h.DB.ListSemesters()
+	userID := authmw.UserIDFromCtx(r.Context())
+	semesters, err := h.DB.ListSemesters(userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -22,6 +24,7 @@ func (h *SemesterHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SemesterHandler) Create(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	var body struct {
 		Name      string `json:"name"`
 		StartDate string `json:"start_date"`
@@ -31,7 +34,7 @@ func (h *SemesterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	s, err := h.DB.CreateSemester(body.Name, body.StartDate, body.EndDate)
+	s, err := h.DB.CreateSemester(userID, body.Name, body.StartDate, body.EndDate)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -40,6 +43,7 @@ func (h *SemesterHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SemesterHandler) Update(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -54,7 +58,7 @@ func (h *SemesterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	s, err := h.DB.UpdateSemester(id, body.Name, body.StartDate, body.EndDate)
+	s, err := h.DB.UpdateSemester(id, userID, body.Name, body.StartDate, body.EndDate)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -67,12 +71,13 @@ func (h *SemesterHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SemesterHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
 	id, ok := parseID(r, "id")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.DB.DeleteSemester(id); err != nil {
+	if err := h.DB.DeleteSemester(id, userID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
