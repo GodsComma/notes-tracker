@@ -51,11 +51,23 @@ func main() {
 	focus := &handlers.FocusHandler{DB: database}
 	grd := &handlers.GradeHandler{DB: database}
 
+	// CORS origins: comma-separated list from env, defaulting to the Vite dev server.
+	rawOrigins := os.Getenv("CORS_ORIGINS")
+	if rawOrigins == "" {
+		rawOrigins = "http://localhost:5173"
+	}
+	allowedOrigins := make([]string, 0)
+	for _, o := range strings.Split(rawOrigins, ",") {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			allowedOrigins = append(allowedOrigins, trimmed)
+		}
+	}
+
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Content-Type"},
 		AllowCredentials: true,
@@ -171,8 +183,30 @@ func main() {
 		})
 	}
 
-	fmt.Printf("Server listening on :%s\n", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatal(err)
+	certFile := os.Getenv("TLS_CERT")
+	keyFile := os.Getenv("TLS_KEY")
+
+	if certFile != "" && keyFile != "" {
+		// Optional HTTP→HTTPS redirect listener
+		if httpPort := os.Getenv("HTTP_PORT"); httpPort != "" {
+			go func() {
+				redirect := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					target := "https://" + r.Host + r.RequestURI
+					http.Redirect(w, r, target, http.StatusMovedPermanently)
+				})
+				if err := http.ListenAndServe(":"+httpPort, redirect); err != nil {
+					log.Printf("HTTP redirect listener: %v", err)
+				}
+			}()
+		}
+		tlsPort := os.Getenv("TLS_PORT")
+		if tlsPort == "" {
+			tlsPort = "443"
+		}
+		fmt.Printf("Server listening on :%s (TLS)\n", tlsPort)
+		log.Fatal(http.ListenAndServeTLS(":"+tlsPort, certFile, keyFile, r))
+	} else {
+		fmt.Printf("Server listening on :%s\n", port)
+		log.Fatal(http.ListenAndServe(":"+port, r))
 	}
 }

@@ -25,6 +25,13 @@ build:
 	@mkdir -p bin
 	GOOS=linux GOARCH=arm64 go build -tags fts5 -ldflags "-s -w" -o $(BIN) ./server
 
+# Build for the current machine's OS/architecture (useful when deploying
+# directly from the host or for testing the production binary locally).
+build-native:
+	cd client && npm run build
+	@mkdir -p bin
+	go build -tags fts5 -ldflags "-s -w" -o $(BIN) ./server
+
 # ─── Deployable bundle ───────────────────────────────────────────────────────
 
 # Produce a self-contained dist/ directory.  Copy everything the binary needs
@@ -64,7 +71,8 @@ clean:
 help:
 	@printf "\nUsage: make <target>\n\n"
 	@printf "  %-8s  %s\n" "dev"   "Go backend + Vite dev server (hot reload)"
-	@printf "  %-8s  %s\n" "build" "Production build → client/dist/ + bin/notes-server"
+	@printf "  %-14s  %s\n" "build" "Production build → client/dist/ + bin/notes-server (linux/arm64)"
+	@printf "  %-14s  %s\n" "build-native" "Same build for the current machine's OS/arch"
 	@printf "  %-8s  %s\n" "dist"  "Self-contained deployable bundle in dist/"
 	@printf "  %-8s  %s\n" "run"   "Build then start the production server"
 	@printf "  %-8s  %s\n" "clean" "Remove bin/, client/dist/, dist/"
