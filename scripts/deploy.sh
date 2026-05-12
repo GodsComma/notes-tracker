@@ -69,7 +69,7 @@ info "rsync → ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_APP_DIR}/"
 # Exclude the runtime data directory — never overwrite live DB or uploads
 rsync -az --delete \
     --exclude='data/' \
-    --info=progress2 \
+    --progress \
     dist/ "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_APP_DIR}/"
 
 success "Transfer complete."

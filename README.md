@@ -1,2 +1,4 @@
 # notes-tracker
-Fully vibe coded application.
+Feature Full
+Production Ready Application
+
