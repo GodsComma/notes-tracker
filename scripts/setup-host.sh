@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# setup-host.sh — Run once on the deploy host to prepare it for the notes-tracker app.
+# Must be run as root (sudo ./setup-host.sh).
+#
+# What it does:
+#   1. Creates a 'notes' system user
+#   2. Creates the directory structure under /opt/notes/
+#   3. Generates a self-signed TLS certificate
+#   4. Generates a JWT_SECRET and writes the environment file
+#   5. Installs the systemd service unit
+#   6. Installs a certificate renewal helper
+#   7. Sets up a daily backup cron job
+#
+# Usage:
+#   scp scripts/setup-host.sh user@host:~/setup-host.sh
+#   ssh user@host 'chmod +x ~/setup-host.sh && sudo ~/setup-host.sh'
+
+set -euo pipefail
+
+# ─── Colours ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+info()    { echo -e "${BLUE}[info]${NC}  $*"; }
+success() { echo -e "${GREEN}[ok]${NC}    $*"; }
+warn()    { echo -e "${YELLOW}[warn]${NC}  $*"; }
+die()     { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
+
+# ─── Root check ───────────────────────────────────────────────────────────────
+[[ $EUID -eq 0 ]] || die "This script must be run as root (sudo $0)"
+
+# ─── Gather configuration ─────────────────────────────────────────────────────
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  notes-tracker — Host Setup"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+read -rp "Hostname (e.g. notes.internal):  " APP_HOSTNAME
+[[ -n "$APP_HOSTNAME" ]] || die "Hostname cannot be empty."
+
+read -rp "Server LAN IP (e.g. 192.168.1.50): " SERVER_IP
+[[ -n "$SERVER_IP" ]] || die "IP cannot be empty."
+
+# Default deploy user to whoever invoked sudo (or current user if no SUDO_USER)
+DEFAULT_DEPLOY_USER="${SUDO_USER:-$(logname 2>/dev/null || echo '')}"
+read -rp "Deploy user (SSH login, default: ${DEFAULT_DEPLOY_USER}): " DEPLOY_USER
+DEPLOY_USER="${DEPLOY_USER:-$DEFAULT_DEPLOY_USER}"
+[[ -n "$DEPLOY_USER" ]] || die "Deploy user cannot be empty."
+
+echo ""
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+APP_ROOT="/opt/notes"
+APP_DIR="${APP_ROOT}/app"
+CERTS_DIR="${APP_ROOT}/certs"
+BACKUPS_DIR="${APP_ROOT}/backups"
+ENV_FILE="${APP_ROOT}/env"
+SERVICE_FILE="/etc/systemd/system/notes.service"
+SERVICE_USER="notes"
+
+# ─── 1. System user ───────────────────────────────────────────────────────────
+info "Creating system user '${SERVICE_USER}'..."
+if id "${SERVICE_USER}" &>/dev/null; then
+    warn "User '${SERVICE_USER}' already exists — skipping."
+else
+    useradd -r -s /usr/sbin/nologin -d "${APP_ROOT}" "${SERVICE_USER}"
+    success "User '${SERVICE_USER}' created."
+fi
+
+# ─── 2. Directories ───────────────────────────────────────────────────────────
+info "Creating directory structure..."
+mkdir -p "${APP_DIR}/data" "${APP_DIR}/client" "${APP_DIR}/server/db"
+mkdir -p "${CERTS_DIR}" "${BACKUPS_DIR}"
+# Deploy user owns the app dir so rsync from build machine works without sudo
+chown -R "${DEPLOY_USER}:${SERVICE_USER}" "${APP_DIR}"
+chmod -R 775 "${APP_DIR}"
+# Service user owns certs, backups, and the env file
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${CERTS_DIR}" "${BACKUPS_DIR}"
+success "Directories created."
+
+# ─── 3. Self-signed TLS certificate ───────────────────────────────────────────
+CERT_FILE="${CERTS_DIR}/cert.pem"
+KEY_FILE="${CERTS_DIR}/key.pem"
+
+if [[ -f "$CERT_FILE" && -f "$KEY_FILE" ]]; then
+    warn "Certificate already exists at ${CERT_FILE} — skipping generation."
+    warn "Delete it manually and re-run if you want a fresh certificate."
+else
+    info "Generating self-signed TLS certificate..."
+    openssl req -x509 -newkey rsa:4096 -days 3650 \
+        -keyout "${KEY_FILE}" \
+        -out "${CERT_FILE}" \
+        -nodes \
+        -subj "/CN=${APP_HOSTNAME}" \
+        -addext "subjectAltName=DNS:${APP_HOSTNAME},DNS:localhost,IP:${SERVER_IP}" \
+        2>/dev/null
+    chmod 600 "${KEY_FILE}"
+    chmod 644 "${CERT_FILE}"
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${CERT_FILE}" "${KEY_FILE}"
+    success "Certificate generated (10-year validity)."
+fi
+
+# ─── 4. Environment file ──────────────────────────────────────────────────────
+if [[ -f "$ENV_FILE" ]]; then
+    warn "Environment file already exists at ${ENV_FILE} — skipping."
+    warn "Edit it manually if you need to change settings."
+else
+    info "Generating environment file..."
+    JWT_SECRET=$(openssl rand -hex 32)
+    cat > "${ENV_FILE}" <<EOF
+# Required
+JWT_SECRET=${JWT_SECRET}
+
+# TLS
+TLS_CERT=${CERT_FILE}
+TLS_KEY=${KEY_FILE}
+TLS_PORT=443
+HTTP_PORT=80
+
+# CORS: the origin browsers use to reach this server
+CORS_ORIGINS=https://${APP_HOSTNAME},https://${SERVER_IP}
+
+# Runtime
+APP_ENV=production
+DATA_DIR=${APP_DIR}/data
+EOF
+    chmod 600 "${ENV_FILE}"
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
+    success "Environment file written."
+fi
+
+# ─── 5. Systemd service ───────────────────────────────────────────────────────
+info "Installing systemd service..."
+cat > "${SERVICE_FILE}" <<EOF
+[Unit]
+Description=Class Notes Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
+WorkingDirectory=${APP_DIR}
+EnvironmentFile=${ENV_FILE}
+ExecStart=${APP_DIR}/notes-server
+Restart=on-failure
+RestartSec=5s
+
+# Allow binding to privileged ports (<1024) without running as root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=${APP_DIR}/data
+PrivateTmp=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable notes
+success "Service 'notes' installed and enabled."
+
+# ─── 6. Certificate renewal script ───────────────────────────────────────────
+RENEW_SCRIPT="${APP_ROOT}/renew-cert.sh"
+info "Installing certificate renewal script..."
+cat > "${RENEW_SCRIPT}" <<EOF
+#!/usr/bin/env bash
+# Renews the self-signed TLS certificate. Run as root.
+# After running, re-trust the new certificate on all client devices.
+set -euo pipefail
+
+CERT_FILE="${CERT_FILE}"
+KEY_FILE="${KEY_FILE}"
+HOSTNAME="${APP_HOSTNAME}"
+SERVER_IP="${SERVER_IP}"
+
+cp "\${CERT_FILE}" "\${CERT_FILE}.bak"
+cp "\${KEY_FILE}" "\${KEY_FILE}.bak"
+
+openssl req -x509 -newkey rsa:4096 -days 3650 \\
+    -keyout "\${KEY_FILE}" \\
+    -out "\${CERT_FILE}" \\
+    -nodes \\
+    -subj "/CN=\${HOSTNAME}" \\
+    -addext "subjectAltName=DNS:\${HOSTNAME},DNS:localhost,IP:\${SERVER_IP}" \\
+    2>/dev/null
+
+chmod 600 "\${KEY_FILE}"
+chmod 644 "\${CERT_FILE}"
+chown ${SERVICE_USER}:${SERVICE_USER} "\${CERT_FILE}" "\${KEY_FILE}"
+
+systemctl restart notes
+echo "Certificate renewed. Re-trust it on all client devices."
+EOF
+chmod 750 "${RENEW_SCRIPT}"
+chown "root:${SERVICE_USER}" "${RENEW_SCRIPT}"
+success "Renewal script installed at ${RENEW_SCRIPT}"
+
+# ─── 7. Backup cron job ───────────────────────────────────────────────────────
+info "Setting up daily backup cron job..."
+CRON_FILE="/etc/cron.d/notes-backup"
+cat > "${CRON_FILE}" <<EOF
+# Daily backup of notes-tracker data at 03:00
+# Keeps 30 days of backups in ${BACKUPS_DIR}
+0 3 * * * ${SERVICE_USER} tar -czf ${BACKUPS_DIR}/notes-\$(date +\%Y\%m\%d).tar.gz \
+    -C ${APP_DIR} data/ && \
+    find ${BACKUPS_DIR} -name 'notes-*.tar.gz' -mtime +30 -delete
+EOF
+chmod 644 "${CRON_FILE}"
+success "Backup cron installed (daily at 03:00, 30-day retention)."
+
+# ─── Summary ──────────────────────────────────────────────────────────────────
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "  ${GREEN}Host setup complete!${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "  App directory:  ${APP_DIR}"
+echo "  Environment:    ${ENV_FILE}"
+echo "  Certificate:    ${CERT_FILE}"
+echo "  Backups:        ${BACKUPS_DIR}"
+echo ""
+echo -e "  ${YELLOW}Next steps:${NC}"
+echo "  1. On your build machine, edit scripts/deploy.sh:"
+echo "       REMOTE_USER=\"${DEPLOY_USER}\""
+echo "       REMOTE_HOST=\"${SERVER_IP}\""
+echo ""
+echo "  2. Run: ./scripts/deploy.sh"
+echo ""
+echo "  3. Copy the certificate to each client device:"
+echo "       scp ${DEPLOY_USER}@${SERVER_IP}:${CERT_FILE} ~/notes-cert.pem"
+echo "     Then follow DEPLOY.md §3 to trust it."
+echo ""
