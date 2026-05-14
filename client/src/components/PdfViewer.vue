@@ -1,5 +1,5 @@
 <template>
-  <div ref="root" class="pdf-viewer relative" @scroll.passive="onScroll">
+  <div ref="root" class="pdf-viewer relative" :data-selection-disabled="!enableSelection || undefined" @scroll.passive="onScroll">
     <div v-if="loading" class="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
       Loading PDF…
     </div>
@@ -7,11 +7,22 @@
       {{ error }}
     </div>
 
+    <!-- Zoom in progress — selection is paused during rescale -->
+    <Transition name="pdf-hint">
+      <div v-if="rescaling" class="pdf-rescaling-banner">
+        Zooming — selection paused
+      </div>
+    </Transition>
+
     <div ref="pagesEl" class="pdf-pages" />
 
-    <!-- Cross-page hint (Fix C) -->
+    <!-- Cross-page hint (Fix C) — positioned near where the selection ended -->
     <Transition name="pdf-hint">
-      <div v-if="crossPageHint" class="pdf-cross-page-hint">
+      <div
+        v-if="crossPageHint"
+        class="pdf-cross-page-hint"
+        :style="{ left: crossPageHint.x + 'px', top: crossPageHint.y + 'px', transform: 'translateX(-50%)' }"
+      >
         Select within one page to highlight
       </div>
     </Transition>
@@ -88,6 +99,7 @@ const pageContainers = new Map<number, HTMLElement>()
 // rescale only needs to re-render these; unrendered pages will be filled in
 // by the background render loop at the new scale.
 const renderedPages = new Set<number>()
+const textLayerPages = new Set<number>() // pages whose textLayer has been fully built
 
 let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
 let usingCachedDoc = false  // true if pdfDoc came from the module cache
@@ -103,10 +115,17 @@ let rescaleResolvers: Array<() => void> = []
 // the epoch it started with and stops if it's been superseded.
 let renderEpoch = 0
 
+let touchSelectionTimer: number | null = null
+let pendingTouchCapture = false
+let hoveredAnchorId: string | null = null
+let lastPointerPos = { clientX: 0, clientY: 0 }
+
 onMounted(() => {
   loadPdf()
   // Fix A: capture on pointerup (after drag ends) not on selectionchange (mid-drag).
   document.addEventListener('pointerup', onDocPointerUp)
+  document.addEventListener('pointerdown', onDocPointerDown)
+  document.addEventListener('mousemove', onDocMouseMove)
   // selectionchange is kept only to clear the tooltip when selection collapses.
   document.addEventListener('selectionchange', onSelectionChangeRaw)
 })
@@ -145,9 +164,12 @@ function onScroll() {
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onDocMouseDown, true)
   document.removeEventListener('pointerup', onDocPointerUp)
+  document.removeEventListener('pointerdown', onDocPointerDown)
+  document.removeEventListener('mousemove', onDocMouseMove)
   document.removeEventListener('selectionchange', onSelectionChangeRaw)
   if (rescaleTimer) clearTimeout(rescaleTimer)
   if (crossPageHintTimer) clearTimeout(crossPageHintTimer)
+  if (touchSelectionTimer) clearTimeout(touchSelectionTimer)
   // Return the cached doc instead of destroying it — the cache manages its
   // own lifecycle. Destroy only if we fetched it ourselves.
   if (pdfDoc) {
@@ -167,6 +189,7 @@ async function loadPdf() {
   loading.value = true
   error.value = ''
   renderedPages.clear()
+  textLayerPages.clear()
   pageContainers.clear()
   pagesEl.value.innerHTML = ''
   renderEpoch++
@@ -303,16 +326,24 @@ async function buildTextLayer(
   textLayerDiv.innerHTML = ''
   textLayerDiv.style.width = viewport.width + 'px'
   textLayerDiv.style.height = viewport.height + 'px'
+  container.classList.add('text-layer-building')
   try {
     const textContent = await page.getTextContent()
     const TextLayerCtor = (pdfjsLib as unknown as {
       TextLayer?: new (opts: unknown) => { render: () => Promise<void> }
     }).TextLayer
-    if (TextLayerCtor) {
-      const tl = new TextLayerCtor({ textContentSource: textContent, container: textLayerDiv, viewport })
-      await tl.render()
+    if (!TextLayerCtor) {
+      console.error('[PdfViewer] pdfjsLib.TextLayer not found — text selection unavailable. Check pdfjs-dist version.')
+      return
     }
-  } catch { /* text layer is best-effort */ }
+    const tl = new TextLayerCtor({ textContentSource: textContent, container: textLayerDiv, viewport })
+    await tl.render()
+    attachSnapHandler(textLayerDiv)
+    const pageNum = Number(container.dataset.pageNumber ?? 0)
+    if (pageNum) textLayerPages.add(pageNum)
+  } catch { /* text layer is best-effort */ } finally {
+    container.classList.remove('text-layer-building')
+  }
 }
 
 // Background render: yields to the browser between batches so the UI stays
@@ -351,15 +382,16 @@ function setupTextLayerObserver() {
         const pageNum = Number(container.dataset.pageNumber ?? 0)
         if (!pageNum || !renderedPages.has(pageNum)) continue
         const textLayerDiv = container.querySelector('.textLayer') as HTMLElement | null
-        // Only build if empty (background render left it blank).
+        // Only build if empty (background render left it blank) and not already in progress.
         if (!textLayerDiv || textLayerDiv.childElementCount > 0) continue
+        if (container.classList.contains('text-layer-building')) continue
         pdfDoc.getPage(pageNum).then(page => {
           const vp = page.getViewport({ scale: props.scale })
           buildTextLayer(page, vp, container)
         }).catch(() => { /* best effort */ })
       }
     },
-    { root: root.value, rootMargin: '200px 0px' }
+    { root: root.value, rootMargin: '400px 0px' }
   )
   for (const container of pageContainers.values()) {
     textLayerObserver.observe(container)
@@ -467,12 +499,6 @@ function renderAllHighlights() {
         el.style.height = r.h * props.scale + 'px'
         el.dataset.anchorId = a.anchorId
         el.dataset.color = a.color ?? 'yellow'
-        el.title = a.text.slice(0, 80)
-        el.addEventListener('click', (ev) => {
-          ev.preventDefault()
-          ev.stopPropagation()
-          emit('anchor-click', a.anchorId)
-        })
         layer.appendChild(el)
       }
     }
@@ -501,10 +527,17 @@ function findPageContainer(node: Node | null): HTMLElement | null {
 // getClientRects() returns one rect per span — 40–120 for a paragraph. Merging
 // by vertical proximity reduces that to 3–5 line-level rects, eliminates
 // subpixel gaps between adjacent spans, and cuts stored data dramatically.
-function mergeRects(raw: DOMRect[]): DOMRect[] {
+//
+// Both thresholds are now scale-aware:
+// - LINE_TOLERANCE grows with scale so same-line subscripts/superscripts stay merged
+//   at high zoom (where their vertical offsets are proportionally larger in CSS px).
+// - HORIZ_GAP grows with scale so inter-word gaps (which are proportionally larger
+//   at high zoom) still merge into full-line rects instead of per-word rects.
+function mergeRects(raw: DOMRect[], scale: number): DOMRect[] {
   if (raw.length <= 1) return raw
-  const LINE_TOLERANCE = 4  // px vertical — rects within this band = same line
-  const HORIZ_GAP     = 8  // px horizontal — merge rects with a small gap
+  const dpr = window.devicePixelRatio ?? 1
+  const LINE_TOLERANCE = Math.max(2, (4 / dpr) * Math.max(1, scale))  // scale-and-DPI-aware
+  const HORIZ_GAP      = Math.round(8 * Math.max(1, scale))            // proportional to zoom
   const sorted = [...raw].sort((a, b) => a.top - b.top || a.left - b.left)
   const merged: DOMRect[] = []
   let cur = sorted[0]
@@ -528,20 +561,187 @@ function mergeRects(raw: DOMRect[]): DOMRect[] {
 // Fix A: selectionchange now only clears the tooltip when the user clicks
 // away and collapses the selection. Actual rect capture happens in captureSelection
 // which is triggered by pointerup — after the drag has fully ended.
+// For touch/pen: reset debounce timer while selection handles are still moving.
 function onSelectionChangeRaw() {
   const sel = window.getSelection()
-  if (!sel || sel.isCollapsed) tooltip.value = null
+  if (!sel || sel.isCollapsed) {
+    tooltip.value = null
+    return
+  }
+  if (pendingTouchCapture) {
+    if (touchSelectionTimer) clearTimeout(touchSelectionTimer)
+    touchSelectionTimer = window.setTimeout(() => {
+      pendingTouchCapture = false
+      touchSelectionTimer = null
+      captureSelection(lastPointerPos.clientX, lastPointerPos.clientY)
+    }, 80)
+  }
 }
 
 // Fix A: pointerup fires exactly once when the mouse button is released.
-// We use requestAnimationFrame so the browser has flushed the final selection
-// state and all layout reads come from the same frame (fixes RC-4 scroll race).
+// Mouse: use requestAnimationFrame so the browser has flushed the final selection
+// state (fixes RC-4 scroll race). Also detects anchor clicks on collapsed selections.
+// Touch/pen: selection state isn't committed at pointerup time on iOS/Android;
+// debounce via selectionchange until handles stop moving.
 function onDocPointerUp(e: PointerEvent) {
-  if (e.pointerType === 'mouse' && e.button !== 0) return  // ignore non-left
-  window.requestAnimationFrame(captureSelection)
+  const { clientX, clientY } = e
+  lastPointerPos = { clientX, clientY }
+  if (e.pointerType === 'mouse') {
+    if (e.button !== 0) return  // ignore non-left
+    // Geometry-based anchor-click: fires only on a plain click (collapsed selection).
+    // Drag-to-select leaves a non-collapsed selection, so we skip anchor detection.
+    const sel = window.getSelection()
+    if (sel?.isCollapsed && root.value && props.anchors.length) {
+      for (const [pageNum, container] of pageContainers) {
+        const pageRect = container.getBoundingClientRect()
+        if (clientX < pageRect.left || clientX > pageRect.right ||
+            clientY < pageRect.top  || clientY > pageRect.bottom) continue
+        const relX = (clientX - pageRect.left) / props.scale
+        const relY = (clientY - pageRect.top)  / props.scale
+        let hit = false
+        for (const anchor of props.anchors) {
+          if (anchor.page !== pageNum) continue
+          for (const r of anchor.rects) {
+            if (relX >= r.x && relX <= r.x + r.w && relY >= r.y && relY <= r.y + r.h) {
+              emit('anchor-click', anchor.anchorId)
+              hit = true
+              break
+            }
+          }
+          if (hit) break
+        }
+        if (hit) break
+      }
+    }
+    window.requestAnimationFrame(() => captureSelection(clientX, clientY))
+  } else {
+    pendingTouchCapture = true
+    if (touchSelectionTimer) clearTimeout(touchSelectionTimer)
+    touchSelectionTimer = window.setTimeout(() => {
+      pendingTouchCapture = false
+      touchSelectionTimer = null
+      captureSelection(clientX, clientY)
+    }, 80)
+  }
 }
 
-function captureSelection() {
+function onDocPointerDown(e: PointerEvent) {
+  if (e.pointerType !== 'mouse') {
+    if (touchSelectionTimer) {
+      clearTimeout(touchSelectionTimer)
+      touchSelectionTimer = null
+    }
+    pendingTouchCapture = false
+  }
+}
+
+function onDocMouseMove(e: MouseEvent) {
+  if (!root.value || !props.anchors.length) return
+  let found: string | null = null
+  for (const [pageNum, container] of pageContainers) {
+    const pageRect = container.getBoundingClientRect()
+    if (e.clientX < pageRect.left || e.clientX > pageRect.right ||
+        e.clientY < pageRect.top  || e.clientY > pageRect.bottom) continue
+    const relX = (e.clientX - pageRect.left) / props.scale
+    const relY = (e.clientY - pageRect.top)  / props.scale
+    for (const anchor of props.anchors) {
+      if (anchor.page !== pageNum) continue
+      for (const r of anchor.rects) {
+        if (relX >= r.x && relX <= r.x + r.w && relY >= r.y && relY <= r.y + r.h) {
+          found = anchor.anchorId
+          break
+        }
+      }
+      if (found) break
+    }
+    if (found) break
+  }
+  if (found === hoveredAnchorId) return
+  if (hoveredAnchorId) {
+    const page = props.anchors.find(a => a.anchorId === hoveredAnchorId)?.page ?? -1
+    pageContainers.get(page)
+      ?.querySelectorAll(`[data-anchor-id="${CSS.escape(hoveredAnchorId)}"]`)
+      .forEach(el => el.classList.remove('pdf-highlight-hover'))
+  }
+  hoveredAnchorId = found
+  if (found) {
+    const page = props.anchors.find(a => a.anchorId === found)?.page ?? -1
+    pageContainers.get(page)
+      ?.querySelectorAll(`[data-anchor-id="${CSS.escape(found)}"]`)
+      .forEach(el => el.classList.add('pdf-highlight-hover'))
+  }
+}
+
+// Cross-browser helper: find the text caret position nearest to (clientX, clientY).
+// Returns a collapsed Range or null if neither API is available or no text was found.
+function caretAtPoint(clientX: number, clientY: number): Range | null {
+  if (typeof document.caretRangeFromPoint === 'function') {
+    // Chrome, Safari, Edge
+    return document.caretRangeFromPoint(clientX, clientY)
+  }
+  // Firefox
+  const pos = (document as unknown as {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+  }).caretPositionFromPoint?.(clientX, clientY)
+  if (!pos) return null
+  const r = document.createRange()
+  r.setStart(pos.offsetNode, pos.offset)
+  r.collapse(true)
+  return r
+}
+
+// Attaches a mousedown handler to a textLayer div that snaps gap clicks to the
+// nearest character. Called after every buildTextLayer so rescales get a fresh
+// handler without stacking.
+//
+// When a click lands on the textLayer div background (an inter-word or inter-line
+// gap — no span at that position), the browser creates a collapsed selection at
+// the div's empty flow content, effectively selecting nothing. This handler
+// intercepts those gap clicks, uses caretRangeFromPoint to snap the anchor to the
+// nearest character, then extends the selection on drag via Selection.extend().
+// Without preventDefault the browser continues the drag from the snapped anchor.
+function attachSnapHandler(textLayerDiv: HTMLElement) {
+  // Reuse the stored reference so repeated calls don't stack listeners.
+  const prev = (textLayerDiv as HTMLElement & { _snapHandler?: EventListener })._snapHandler
+  if (prev) textLayerDiv.removeEventListener('mousedown', prev)
+
+  const handler = (e: MouseEvent) => {
+    // Only fire when the click target is the textLayer div itself (the background),
+    // not when it's a child <span> or <br> — those have native selection already.
+    if (e.target !== textLayerDiv) return
+
+    const range = caretAtPoint(e.clientX, e.clientY)
+    if (!range || !textLayerDiv.contains(range.startContainer)) return
+
+    const sel = window.getSelection()
+    if (!sel) return
+    sel.removeAllRanges()
+    sel.addRange(range)
+    // Do NOT preventDefault — the browser must receive the mousedown to track
+    // the drag start position from our snapped anchor.
+
+    // Extend the selection on drag so moving through gaps also snaps correctly.
+    const onDragMove = (ev: MouseEvent) => {
+      if (!(ev.buttons & 1)) return  // bail if left button released
+      const end = caretAtPoint(ev.clientX, ev.clientY)
+      if (!end || !textLayerDiv.contains(end.startContainer)) return
+      try {
+        sel.extend(end.startContainer, end.startOffset)
+      } catch { /* extend can throw across disconnected nodes — safe to ignore */ }
+    }
+    const onDragEnd = () => {
+      document.removeEventListener('mousemove', onDragMove)
+      document.removeEventListener('mouseup', onDragEnd)
+    }
+    document.addEventListener('mousemove', onDragMove)
+    document.addEventListener('mouseup', onDragEnd)
+  }
+
+  ;(textLayerDiv as HTMLElement & { _snapHandler?: EventListener })._snapHandler = handler as EventListener
+  textLayerDiv.addEventListener('mousedown', handler)
+}
+
+function captureSelection(clientX = 0, clientY = 0) {
   if (!props.enableSelection || rescaling.value || !root.value) return
 
   const sel = window.getSelection()
@@ -560,7 +760,7 @@ function captureSelection() {
   if (!startPage) return
   if (endPage && endPage !== startPage) {
     // Brief visual feedback so the user knows why nothing happened.
-    showCrossPageHint()
+    showCrossPageHint(clientX, clientY)
     return
   }
   const pageEl  = startPage
@@ -573,7 +773,7 @@ function captureSelection() {
   const rawRects  = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1)
   if (rawRects.length === 0) return
 
-  const lineRects = mergeRects(rawRects)
+  const lineRects = mergeRects(rawRects, props.scale)
 
   const rects: PdfRect[] = lineRects.map(r => ({
     x: (r.left - pageRect.left) / props.scale,
@@ -587,22 +787,31 @@ function captureSelection() {
   if (!text) return
 
   const first = lineRects[0]
+  // Offset the tooltip above the first line. At high zoom the line height grows
+  // proportionally, so a fixed 32px can overlap the selection highlight. Use
+  // the actual line height + 8px clearance, floored at 32px for small text.
+  const tooltipOffset = Math.max(32, first.height + 8)
   tooltip.value = {
     x: first.left - rootRect.left + root.value.scrollLeft,
-    y: first.top  - rootRect.top  + root.value.scrollTop - 32,
+    y: first.top  - rootRect.top  + root.value.scrollTop - tooltipOffset,
     page: pageNum,
     rects,
     text
   }
 }
 
-// Hint shown when selection spans two pages (no state, clears automatically).
+// Hint shown when selection spans two pages — positioned near the cursor.
 let crossPageHintTimer: number | null = null
-const crossPageHint = ref(false)
-function showCrossPageHint() {
-  crossPageHint.value = true
+const crossPageHint = ref<{ x: number; y: number } | null>(null)
+function showCrossPageHint(clientX: number, clientY: number) {
+  if (!root.value) return
+  const rootRect = root.value.getBoundingClientRect()
+  crossPageHint.value = {
+    x: clientX - rootRect.left + root.value.scrollLeft,
+    y: clientY - rootRect.top  + root.value.scrollTop - 40
+  }
   if (crossPageHintTimer) clearTimeout(crossPageHintTimer)
-  crossPageHintTimer = window.setTimeout(() => { crossPageHint.value = false }, 2000)
+  crossPageHintTimer = window.setTimeout(() => { crossPageHint.value = null }, 2000)
 }
 
 function commitSelection(color: PdfQuoteColor) {
@@ -643,6 +852,15 @@ function scrollToPage(p: number) {
   const pageRect = container.getBoundingClientRect()
   const targetTop = pageRect.top - rootRect.top + root.value.scrollTop - 24
   root.value.scrollTop = Math.max(0, targetTop)
+
+  // Eagerly build text layer if the page is canvas-rendered but has no text layer yet.
+  // Fire-and-forget — selection becomes available as soon as the async build completes.
+  if (pdfDoc && renderedPages.has(p) && !textLayerPages.has(p)) {
+    pdfDoc.getPage(p).then(page => {
+      const vp = page.getViewport({ scale: props.scale })
+      buildTextLayer(page, vp, container)
+    }).catch(() => { /* best effort */ })
+  }
 }
 
 // Wire up the IntersectionObserver once loadPdf puts containers in the DOM.
@@ -668,9 +886,7 @@ defineExpose({
 
 .pdf-cross-page-hint {
   position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  /* left/top/transform set by :style binding — positioned near cursor */
   background: rgba(15, 23, 42, 0.85);
   color: #f1f5f9;
   font-size: 12px;

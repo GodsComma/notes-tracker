@@ -10,6 +10,20 @@
             <span class="text-slate-400 text-sm">{{ formatBytes(attachment.size_bytes) }}</span>
           </div>
           <div class="flex items-center gap-3 shrink-0">
+            <!-- PDF zoom controls -->
+            <div v-if="attachment.mime_type === 'application/pdf'" class="flex items-center gap-1">
+              <button
+                class="text-slate-400 hover:text-white text-lg px-1 leading-none"
+                title="Zoom out"
+                @click="previewScale = Math.max(0.75, previewScale - 0.25)"
+              >−</button>
+              <span class="text-slate-400 text-xs w-10 text-center tabular-nums">{{ Math.round(previewScale * 100) }}%</span>
+              <button
+                class="text-slate-400 hover:text-white text-lg px-1 leading-none"
+                title="Zoom in"
+                @click="previewScale = Math.min(3, previewScale + 0.25)"
+              >+</button>
+            </div>
             <a
               :href="api.attachments.fileUrl(attachment.id, 'attachment')"
               download
@@ -39,12 +53,18 @@
           />
 
           <!-- PDF -->
-          <iframe
+          <div
             v-else-if="attachment.mime_type === 'application/pdf'"
-            :src="api.attachments.fileUrl(attachment.id)"
-            class="w-full h-full rounded-lg bg-white"
-            title="PDF preview"
-          />
+            class="w-full h-full"
+          >
+            <PdfViewer
+              :url="api.attachments.fileUrl(attachment.id)"
+              :anchors="[]"
+              :scale="previewScale"
+              :enable-selection="false"
+              class="w-full h-full rounded-lg"
+            />
+          </div>
 
           <!-- No preview -->
           <div v-else class="text-center text-slate-400">
@@ -66,9 +86,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { api, type Attachment } from '@/api'
 import { fileIcon, formatBytes } from '@/utils/mime'
+import PdfViewer from '@/components/PdfViewer.vue'
+
+const previewScale = ref(1.5)
 
 defineProps<{ attachment: Attachment | null }>()
 const emit = defineEmits<{ close: [] }>()

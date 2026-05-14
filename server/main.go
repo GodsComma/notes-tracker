@@ -136,10 +136,13 @@ func main() {
 		r.Put("/attachments/{id}/progress", att.SaveProgress)
 		r.Get("/attachments/{id}/settings", att.GetFocusSettings)
 		r.Put("/attachments/{id}/settings", att.SaveFocusSettings)
+		r.Patch("/attachments/{id}/assign", att.AssignAttachment)
+		r.Patch("/attachments/{id}", att.RenameAttachment)
 		r.Delete("/attachments/{id}", att.Delete)
 
-		// Deep Read library — read-only aggregate of every PDF
+		// Deep Read library — all PDFs including direct uploads
 		r.Get("/library/pdfs", att.ListLibraryPDFs)
+		r.Post("/library/attachments", att.UploadToLibrary)
 
 		// Focus sessions
 		r.Post("/focus-sessions", focus.Log)

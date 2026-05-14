@@ -96,6 +96,7 @@ type CalendarEvent struct {
 
 type Attachment struct {
 	ID        int64  `json:"id"`
+	UserID    *int64 `json:"user_id"`
 	ClassID   *int64 `json:"class_id"`
 	SourceID  *int64 `json:"source_id"`
 	Filename  string `json:"filename"`
@@ -105,15 +106,15 @@ type Attachment struct {
 }
 
 type PDFLibraryItem struct {
-	ID          int64  `json:"id"`
-	Filename    string `json:"filename"`
-	SizeBytes   int64  `json:"size_bytes"`
-	CreatedAt   string `json:"created_at"`
-	ClassID     int64  `json:"class_id"`
-	ClassName   string `json:"class_name"`
-	ClassColor  string `json:"class_color"`
-	SourceID    *int64 `json:"source_id"`
-	SourceTitle string `json:"source_title"`
+	ID          int64   `json:"id"`
+	Filename    string  `json:"filename"`
+	SizeBytes   int64   `json:"size_bytes"`
+	CreatedAt   string  `json:"created_at"`
+	ClassID     *int64  `json:"class_id"`    // nil for unassigned library uploads
+	ClassName   *string `json:"class_name"`
+	ClassColor  *string `json:"class_color"`
+	SourceID    *int64  `json:"source_id"`
+	SourceTitle *string `json:"source_title"`
 }
 
 type FocusSession struct {
@@ -851,18 +852,16 @@ func (d *DB) ListAllAttachmentsForClass(classID, userID int64) ([]Attachment, er
 func (d *DB) ListAllPDFs(userID int64) ([]PDFLibraryItem, error) {
 	rows, err := d.sql.Query(`
 		SELECT a.id, a.filename, a.size_bytes, a.created_at,
-		       COALESCE(c.id, 0) AS cid,
-		       COALESCE(c.name, ''),
-		       COALESCE(c.color, ''),
-		       a.source_id,
-		       COALESCE(src.title, '')
+		       c.id, c.name, c.color,
+		       a.source_id, src.title
 		FROM attachments a
 		LEFT JOIN sources src ON src.id = a.source_id
 		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
-		JOIN semesters s ON s.id = c.semester_id
-		WHERE a.mime_type = 'application/pdf' AND s.user_id = ?
+		LEFT JOIN semesters s ON s.id = c.semester_id
+		WHERE a.mime_type = 'application/pdf'
+		  AND (a.user_id = ? OR s.user_id = ?)
 		ORDER BY a.created_at DESC`,
-		userID,
+		userID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -871,12 +870,25 @@ func (d *DB) ListAllPDFs(userID int64) ([]PDFLibraryItem, error) {
 	var out []PDFLibraryItem
 	for rows.Next() {
 		var p PDFLibraryItem
+		var classID sql.NullInt64
+		var className, classColor sql.NullString
+		var sourceID sql.NullInt64
+		var sourceTitle sql.NullString
 		if err := rows.Scan(
 			&p.ID, &p.Filename, &p.SizeBytes, &p.CreatedAt,
-			&p.ClassID, &p.ClassName, &p.ClassColor,
-			&p.SourceID, &p.SourceTitle,
+			&classID, &className, &classColor,
+			&sourceID, &sourceTitle,
 		); err != nil {
 			return nil, err
+		}
+		if classID.Valid {
+			p.ClassID = &classID.Int64
+			p.ClassName = &className.String
+			p.ClassColor = &classColor.String
+		}
+		if sourceID.Valid {
+			p.SourceID = &sourceID.Int64
+			p.SourceTitle = &sourceTitle.String
 		}
 		out = append(out, p)
 	}
@@ -886,21 +898,21 @@ func (d *DB) ListAllPDFs(userID int64) ([]PDFLibraryItem, error) {
 func (d *DB) GetAttachment(id, userID int64) (Attachment, error) {
 	var a Attachment
 	err := d.sql.QueryRow(`
-		SELECT a.id, a.class_id, a.source_id, a.filename, a.mime_type, a.size_bytes, a.created_at
+		SELECT a.id, a.user_id, a.class_id, a.source_id, a.filename, a.mime_type, a.size_bytes, a.created_at
 		FROM attachments a
 		LEFT JOIN sources src ON src.id = a.source_id
 		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
-		JOIN semesters s ON s.id = c.semester_id
-		WHERE a.id = ? AND s.user_id = ?`,
-		id, userID,
-	).Scan(&a.ID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt)
+		LEFT JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND (a.user_id = ? OR s.user_id = ?)`,
+		id, userID, userID,
+	).Scan(&a.ID, &a.UserID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt)
 	return a, err
 }
 
-func (d *DB) CreateAttachment(classID, sourceID *int64, filename, mimeType string, sizeBytes int64) (Attachment, error) {
+func (d *DB) CreateAttachment(classID, sourceID, userID *int64, filename, mimeType string, sizeBytes int64) (Attachment, error) {
 	res, err := d.sql.Exec(
-		`INSERT INTO attachments (class_id, source_id, filename, mime_type, size_bytes) VALUES (?,?,?,?,?)`,
-		classID, sourceID, filename, mimeType, sizeBytes,
+		`INSERT INTO attachments (class_id, source_id, user_id, filename, mime_type, size_bytes) VALUES (?,?,?,?,?,?)`,
+		classID, sourceID, userID, filename, mimeType, sizeBytes,
 	)
 	if err != nil {
 		return Attachment{}, err
@@ -913,8 +925,8 @@ func (d *DB) CreateAttachment(classID, sourceID *int64, filename, mimeType strin
 func (d *DB) getAttachmentByID(id int64) (Attachment, error) {
 	var a Attachment
 	err := d.sql.QueryRow(
-		`SELECT id, class_id, source_id, filename, mime_type, size_bytes, created_at FROM attachments WHERE id=?`, id,
-	).Scan(&a.ID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt)
+		`SELECT id, user_id, class_id, source_id, filename, mime_type, size_bytes, created_at FROM attachments WHERE id=?`, id,
+	).Scan(&a.ID, &a.UserID, &a.ClassID, &a.SourceID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.CreatedAt)
 	return a, err
 }
 
@@ -928,6 +940,36 @@ func (d *DB) DeleteAttachment(id int64) error {
 	return err
 }
 
+// AssignAttachment moves a user-owned (unassigned) attachment to a class or source.
+// Only attachments currently owned via user_id can be assigned; already-assigned ones return ErrNoRows.
+func (d *DB) AssignAttachment(id, userID int64, classID, sourceID *int64) (Attachment, error) {
+	var count int
+	if err := d.sql.QueryRow(
+		`SELECT COUNT(*) FROM attachments WHERE id = ? AND user_id = ?`, id, userID,
+	).Scan(&count); err != nil || count == 0 {
+		return Attachment{}, sql.ErrNoRows
+	}
+	_, err := d.sql.Exec(
+		`UPDATE attachments SET user_id = NULL, class_id = ?, source_id = ? WHERE id = ?`,
+		classID, sourceID, id,
+	)
+	if err != nil {
+		return Attachment{}, err
+	}
+	return d.getAttachmentByID(id)
+}
+
+// RenameAttachment updates the stored filename for any attachment owned by userID.
+func (d *DB) RenameAttachment(id, userID int64, filename string) (Attachment, error) {
+	if _, err := d.GetAttachment(id, userID); err != nil {
+		return Attachment{}, err
+	}
+	if _, err := d.sql.Exec(`UPDATE attachments SET filename = ? WHERE id = ?`, filename, id); err != nil {
+		return Attachment{}, err
+	}
+	return d.getAttachmentByID(id)
+}
+
 // --- Attachment Progress (last page viewed) ---
 
 func (d *DB) GetAttachmentLastPage(attachmentID, userID int64) (int, error) {
@@ -938,9 +980,9 @@ func (d *DB) GetAttachmentLastPage(attachmentID, userID int64) (int, error) {
 		JOIN attachments a ON a.id = ap.attachment_id
 		LEFT JOIN sources src ON src.id = a.source_id
 		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
-		JOIN semesters s ON s.id = c.semester_id
-		WHERE ap.attachment_id = ? AND s.user_id = ?`,
-		attachmentID, userID,
+		LEFT JOIN semesters s ON s.id = c.semester_id
+		WHERE ap.attachment_id = ? AND (a.user_id = ? OR s.user_id = ?)`,
+		attachmentID, userID, userID,
 	).Scan(&lastPage)
 	if err == sql.ErrNoRows {
 		return 1, nil
@@ -955,9 +997,9 @@ func (d *DB) SaveAttachmentLastPage(attachmentID, userID int64, lastPage int) er
 		SELECT COUNT(*) FROM attachments a
 		LEFT JOIN sources src ON src.id = a.source_id
 		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
-		JOIN semesters s ON s.id = c.semester_id
-		WHERE a.id = ? AND s.user_id = ?`,
-		attachmentID, userID,
+		LEFT JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND (a.user_id = ? OR s.user_id = ?)`,
+		attachmentID, userID, userID,
 	).Scan(&count); err != nil || count == 0 {
 		return sql.ErrNoRows
 	}
@@ -1239,9 +1281,9 @@ func (d *DB) GetFocusSettings(attachmentID, userID int64) (FocusSettings, error)
 		SELECT COUNT(*) FROM attachments a
 		LEFT JOIN sources src ON src.id = a.source_id
 		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
-		JOIN semesters s ON s.id = c.semester_id
-		WHERE a.id = ? AND s.user_id = ?`,
-		attachmentID, userID,
+		LEFT JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND (a.user_id = ? OR s.user_id = ?)`,
+		attachmentID, userID, userID,
 	).Scan(&count); err != nil || count == 0 {
 		return defaults, sql.ErrNoRows
 	}
@@ -1262,9 +1304,9 @@ func (d *DB) SaveFocusSettings(attachmentID, userID int64, s FocusSettings) erro
 		SELECT COUNT(*) FROM attachments a
 		LEFT JOIN sources src ON src.id = a.source_id
 		LEFT JOIN classes c ON c.id = COALESCE(a.class_id, src.class_id)
-		JOIN semesters s ON s.id = c.semester_id
-		WHERE a.id = ? AND s.user_id = ?`,
-		attachmentID, userID,
+		LEFT JOIN semesters s ON s.id = c.semester_id
+		WHERE a.id = ? AND (a.user_id = ? OR s.user_id = ?)`,
+		attachmentID, userID, userID,
 	).Scan(&count); err != nil || count == 0 {
 		return sql.ErrNoRows
 	}

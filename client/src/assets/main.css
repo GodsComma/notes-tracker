@@ -667,6 +667,10 @@
   overflow: visible; /* was hidden — clips compressed spans making edge text unselectable */
   opacity: 0.25;
   line-height: 1;
+  z-index: 5; /* above highlight-layer (z-index: 4) so text spans receive pointer events first */
+  cursor: text; /* consistent text cursor over the whole layer, including inter-word gaps */
+  user-select: text;
+  -webkit-user-select: text;
 }
 .pdf-page-container .pdf-page-label {
   position: absolute;
@@ -695,9 +699,23 @@
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+  user-select: text;         /* explicit — prevents ancestor user-select:none from propagating */
+  -webkit-user-select: text; /* Safari */
 }
 .pdf-page-container .textLayer ::selection {
-  background: rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 1.0); /* fully opaque to compensate for parent opacity: 0.25 */
+  color: transparent; /* keep text invisible so canvas shows through */
+}
+.pdf-viewer[data-selection-disabled] .textLayer,
+.pdf-viewer[data-selection-disabled] .textLayer > span,
+.pdf-viewer[data-selection-disabled] .textLayer > br {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pdf-page-container.text-layer-building .textLayer > span,
+.pdf-page-container.text-layer-building .textLayer > br {
+  cursor: wait;
 }
 .pdf-highlight-layer {
   position: absolute;
@@ -709,23 +727,37 @@
   position: absolute;
   background: rgba(250, 204, 21, 0.35);
   border-radius: 2px;
-  pointer-events: auto;
-  cursor: pointer;
+  pointer-events: none; /* events pass through to textLayer; click detection is geometry-based */
+  cursor: inherit;
   transition: background 0.15s;
 }
 .pdf-highlight[data-color="yellow"] { background: rgba(250, 204, 21, 0.35); }
 .pdf-highlight[data-color="green"]  { background: rgba(74, 222, 128, 0.35); }
 .pdf-highlight[data-color="blue"]   { background: rgba(96, 165, 250, 0.35); }
 .pdf-highlight[data-color="pink"]   { background: rgba(244, 114, 182, 0.40); }
-.pdf-highlight[data-color="yellow"]:hover { background: rgba(250, 204, 21, 0.55); }
-.pdf-highlight[data-color="green"]:hover  { background: rgba(74, 222, 128, 0.55); }
-.pdf-highlight[data-color="blue"]:hover   { background: rgba(96, 165, 250, 0.55); }
-.pdf-highlight[data-color="pink"]:hover   { background: rgba(244, 114, 182, 0.60); }
+.pdf-highlight.pdf-highlight-hover[data-color="yellow"] { background: rgba(250, 204, 21, 0.55); }
+.pdf-highlight.pdf-highlight-hover[data-color="green"]  { background: rgba(74, 222, 128, 0.55); }
+.pdf-highlight.pdf-highlight-hover[data-color="blue"]   { background: rgba(96, 165, 250, 0.55); }
+.pdf-highlight.pdf-highlight-hover[data-color="pink"]   { background: rgba(244, 114, 182, 0.60); }
 .pdf-highlight-active {
   outline: 2px solid rgba(99, 102, 241, 0.85);
   filter: brightness(1.1);
 }
 
+.pdf-rescaling-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.75);
+  color: #f1f5f9;
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 20;
+  white-space: nowrap;
+}
 .pdf-selection-tooltip {
   position: absolute;
   z-index: 30;

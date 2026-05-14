@@ -74,6 +74,7 @@ export interface Note {
 
 export interface Attachment {
   id: number
+  user_id: number | null
   class_id: number | null
   source_id: number | null
   filename: string
@@ -87,11 +88,11 @@ export interface PDFLibraryItem {
   filename: string
   size_bytes: number
   created_at: string
-  class_id: number
-  class_name: string
-  class_color: string
+  class_id: number | null      // null = unassigned direct library upload
+  class_name: string | null
+  class_color: string | null
   source_id: number | null
-  source_title: string
+  source_title: string | null
 }
 
 export interface FocusSession {
@@ -258,6 +259,21 @@ export const api = {
       request<FocusSettingsAPI>(`/attachments/${id}/settings`),
     saveFocusSettings: (id: number, s: FocusSettingsAPI) =>
       request<void>(`/attachments/${id}/settings`, { method: 'PUT', body: JSON.stringify(s) }),
+    uploadToLibrary: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request<Attachment>('/library/attachments', { method: 'POST', body: form })
+    },
+    assign: (id: number, target: { class_id: number } | { source_id: number }) =>
+      request<Attachment>(`/attachments/${id}/assign`, {
+        method: 'PATCH',
+        body: JSON.stringify(target),
+      }),
+    rename: (id: number, filename: string) =>
+      request<Attachment>(`/attachments/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ filename }),
+      }),
     delete: (id: number) =>
       request<void>(`/attachments/${id}`, { method: 'DELETE' })
   },

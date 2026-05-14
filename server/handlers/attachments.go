@@ -108,7 +108,6 @@ func (h *AttachmentHandler) UploadToClass(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid class id")
 		return
 	}
-	// Verify class belongs to user before uploading
 	if _, err := h.DB.GetClass(classID, userID); err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "class not found")
 		return
@@ -116,7 +115,7 @@ func (h *AttachmentHandler) UploadToClass(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.upload(w, r, &classID, nil)
+	h.upload(w, r, &classID, nil, nil)
 }
 
 func (h *AttachmentHandler) UploadToSource(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +125,6 @@ func (h *AttachmentHandler) UploadToSource(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid source id")
 		return
 	}
-	// Verify source belongs to user before uploading
 	if _, err := h.DB.GetSource(sourceID, userID); err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "source not found")
 		return
@@ -134,10 +132,16 @@ func (h *AttachmentHandler) UploadToSource(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.upload(w, r, nil, &sourceID)
+	h.upload(w, r, nil, &sourceID, nil)
 }
 
-func (h *AttachmentHandler) upload(w http.ResponseWriter, r *http.Request, classID, sourceID *int64) {
+func (h *AttachmentHandler) UploadToLibrary(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
+	h.upload(w, r, nil, nil, &userID)
+}
+
+// upload is the shared upload implementation. Exactly one of classID, sourceID, ownerUserID must be non-nil.
+func (h *AttachmentHandler) upload(w http.ResponseWriter, r *http.Request, classID, sourceID, ownerUserID *int64) {
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "file too large or invalid multipart form")
 		return
@@ -156,7 +160,7 @@ func (h *AttachmentHandler) upload(w http.ResponseWriter, r *http.Request, class
 		mimeType = "application/octet-stream"
 	}
 
-	att, err := h.DB.CreateAttachment(classID, sourceID, safeName, mimeType, 0)
+	att, err := h.DB.CreateAttachment(classID, sourceID, ownerUserID, safeName, mimeType, 0)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -190,6 +194,91 @@ func (h *AttachmentHandler) upload(w http.ResponseWriter, r *http.Request, class
 	att.SizeBytes = size
 
 	writeJSON(w, http.StatusCreated, att)
+}
+
+// --- Assign ---
+
+func (h *AttachmentHandler) AssignAttachment(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
+	id, ok := parseID(r, "id")
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		ClassID  *int64 `json:"class_id"`
+		SourceID *int64 `json:"source_id"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.ClassID == nil && body.SourceID == nil {
+		writeError(w, http.StatusBadRequest, "class_id or source_id is required")
+		return
+	}
+	if body.ClassID != nil && body.SourceID != nil {
+		writeError(w, http.StatusBadRequest, "provide either class_id or source_id, not both")
+		return
+	}
+	// Verify the target belongs to the same user
+	if body.ClassID != nil {
+		if _, err := h.DB.GetClass(*body.ClassID, userID); err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "class not found")
+			return
+		} else if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if body.SourceID != nil {
+		if _, err := h.DB.GetSource(*body.SourceID, userID); err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "source not found")
+			return
+		} else if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	att, err := h.DB.AssignAttachment(id, userID, body.ClassID, body.SourceID)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "attachment not found or already assigned")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, att)
+}
+
+// --- Rename ---
+
+func (h *AttachmentHandler) RenameAttachment(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromCtx(r.Context())
+	id, ok := parseID(r, "id")
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Filename string `json:"filename"`
+	}
+	if err := decode(r, &body); err != nil || strings.TrimSpace(body.Filename) == "" {
+		writeError(w, http.StatusBadRequest, "filename is required")
+		return
+	}
+	safeName := sanitizeFilename(body.Filename)
+	att, err := h.DB.RenameAttachment(id, userID, safeName)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, att)
 }
 
 // --- Serve ---
