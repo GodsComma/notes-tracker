@@ -39,7 +39,8 @@ func main() {
 		log.Fatalf("open db: %v", err)
 	}
 
-	auth := &handlers.AuthHandler{DB: database, Secret: secret}
+	tlsEnabled := os.Getenv("TLS_CERT") != "" && os.Getenv("TLS_KEY") != ""
+	auth := &handlers.AuthHandler{DB: database, Secret: secret, SecureCookie: tlsEnabled}
 	sem := &handlers.SemesterHandler{DB: database}
 	cls := &handlers.ClassHandler{DB: database, DataDir: dataDir}
 	src := &handlers.SourceHandler{DB: database, DataDir: dataDir}

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,8 +15,9 @@ import (
 )
 
 type AuthHandler struct {
-	DB     *db.DB
-	Secret []byte
+	DB           *db.DB
+	Secret       []byte
+	SecureCookie bool
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +87,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   h.SecureCookie,
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -112,7 +113,6 @@ func (h *AuthHandler) issueToken(w http.ResponseWriter, userID int64) {
 	if err != nil {
 		return
 	}
-	secure := os.Getenv("APP_ENV") == "production"
 	http.SetCookie(w, &http.Cookie{
 		Name:     "nt_token",
 		Value:    signed,
@@ -120,7 +120,7 @@ func (h *AuthHandler) issueToken(w http.ResponseWriter, userID int64) {
 		MaxAge:   7 * 24 * 60 * 60,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   secure,
+		Secure:   h.SecureCookie,
 	})
 }
 

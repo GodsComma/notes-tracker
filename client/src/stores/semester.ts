@@ -11,7 +11,7 @@ export const useSemesterStore = defineStore('semester', () => {
   )
 
   async function load() {
-    semesters.value = await api.semesters.list()
+    semesters.value = (await api.semesters.list()) ?? []
     // Default to the first (most recent) semester
     if (!activeSemesterID.value && semesters.value.length > 0) {
       activeSemesterID.value = semesters.value[0].id

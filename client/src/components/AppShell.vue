@@ -287,9 +287,13 @@ const primaryNav = [
 ]
 
 onMounted(async () => {
-  await semesterStore.load()
-  if (semesterStore.activeSemesterID) {
-    await classStore.loadForSemester(semesterStore.activeSemesterID)
+  try {
+    await semesterStore.load()
+    if (semesterStore.activeSemesterID) {
+      await classStore.loadForSemester(semesterStore.activeSemesterID)
+    }
+  } catch (err) {
+    console.error('Failed to load semester data:', err)
   }
 })
 
