@@ -79,14 +79,13 @@ func main() {
 		r.Post("/register", auth.Register)
 		r.Post("/login", auth.Login)
 		r.Post("/logout", auth.Logout)
+		// /me lives here so Chi doesn't 404 before reaching the protected router
+		r.With(authmw.Authenticated(secret)).Get("/me", auth.Me)
 	})
 
 	// All other API routes require a valid JWT
 	r.Route("/api/v1/", func(r chi.Router) {
 		r.Use(authmw.Authenticated(secret))
-
-		// Current user
-		r.Get("/auth/me", auth.Me)
 
 		// Semesters
 		r.Get("/semesters", sem.List)
