@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex items-center gap-0.5 rounded-full p-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+    class="flex items-center gap-0.5 rounded-full p-0.5 bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800"
     role="group"
     aria-label="Color theme"
   >
@@ -9,8 +9,8 @@
       :class="[
         'flex items-center justify-center w-7 h-7 rounded-full transition-all duration-200',
         theme === 'light'
-          ? 'bg-white dark:bg-slate-600 shadow-sm text-amber-500'
-          : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400'
+          ? 'bg-white dark:bg-zinc-700 shadow-sm text-amber-500'
+          : 'text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-400'
       ]"
       title="Light mode"
       @click="setTheme('light')"
@@ -25,8 +25,8 @@
       :class="[
         'flex items-center justify-center w-7 h-7 rounded-full transition-all duration-200',
         theme === 'dark'
-          ? 'bg-slate-700 shadow-sm text-indigo-400'
-          : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400'
+          ? 'bg-zinc-800 shadow-sm text-amber-400'
+          : 'text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-400'
       ]"
       title="Dark mode"
       @click="setTheme('dark')"

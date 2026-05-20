@@ -5,22 +5,22 @@
     <form v-else class="space-y-5" @submit.prevent="save">
       <!-- Grading type -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Grading type</label>
-        <div class="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-sm w-fit">
+        <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1.5">Grading type</label>
+        <div class="flex rounded-lg border border-slate-200 dark:border-zinc-800 overflow-hidden text-sm w-fit">
           <button
             type="button"
             class="px-4 py-1.5 font-medium transition-colors"
             :class="draft.grading_type === 'letter'
-              ? 'bg-slate-900 text-white dark:bg-slate-700'
-              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'"
+              ? 'bg-slate-900 text-white dark:bg-zinc-800'
+              : 'bg-white dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'"
             @click="draft.grading_type = 'letter'"
           >Letter grades</button>
           <button
             type="button"
-            class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-slate-700"
+            class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-zinc-800"
             :class="draft.grading_type === 'pass_fail'
-              ? 'bg-slate-900 text-white dark:bg-slate-700'
-              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'"
+              ? 'bg-slate-900 text-white dark:bg-zinc-800'
+              : 'bg-white dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'"
             @click="draft.grading_type = 'pass_fail'"
           >Pass/Fail</button>
         </div>
@@ -28,7 +28,7 @@
 
       <!-- Plus/minus toggle -->
       <div v-if="draft.grading_type === 'letter'">
-        <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+        <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-zinc-300 cursor-pointer">
           <input v-model="draft.plus_minus" type="checkbox" class="rounded" />
           Use sub-grades (A+/A/A−, B+/B/B−, …)
         </label>
@@ -38,7 +38,7 @@
       <div>
         <button
           type="button"
-          class="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 flex items-center gap-1"
+          class="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200 flex items-center gap-1"
           @click="showThresholds = !showThresholds"
         >
           <span class="inline-block w-3">{{ showThresholds ? '▾' : '▸' }}</span>
@@ -50,7 +50,7 @@
             :key="row.letter"
             class="flex items-center gap-2"
           >
-            <span class="text-sm font-mono w-8 text-slate-700 dark:text-slate-300">{{ row.letter }}</span>
+            <span class="text-sm font-mono w-8 text-slate-700 dark:text-zinc-300">{{ row.letter }}</span>
             <input
               type="number"
               min="0"
@@ -67,7 +67,7 @@
       <!-- Categories -->
       <div>
         <div class="flex items-center justify-between mb-2">
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Categories</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300">Categories</label>
           <button
             type="button"
             class="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
@@ -75,7 +75,7 @@
           >+ Add category</button>
         </div>
 
-        <div v-if="draft.categories.length === 0" class="text-sm text-slate-400 py-3 text-center border border-dashed border-slate-200 dark:border-slate-700 rounded-md">
+        <div v-if="draft.categories.length === 0" class="text-sm text-slate-400 py-3 text-center border border-dashed border-slate-200 dark:border-zinc-800 rounded-md">
           No categories yet. Add at least one.
         </div>
 
@@ -115,7 +115,7 @@
                 title="Possible points"
               />
             </div>
-            <label class="col-span-2 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+            <label class="col-span-2 flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-400 cursor-pointer">
               <input v-model="cat.is_extra_credit" type="checkbox" class="rounded" />
               Extra
             </label>
@@ -136,12 +136,12 @@
       <!-- Weight summary -->
       <div>
         <div class="flex items-center justify-between text-xs mb-1.5">
-          <span class="text-slate-600 dark:text-slate-400">
+          <span class="text-slate-600 dark:text-zinc-400">
             Weights total: <span class="font-medium" :class="weightStatusClass">{{ totalWeight.toFixed(1) }}%</span>
             <span v-if="extraCreditTotal > 0" class="text-slate-400"> · {{ extraCreditTotal.toFixed(1) }}% extra credit</span>
           </span>
         </div>
-        <div class="h-2 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+        <div class="h-2 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
           <div
             class="h-full transition-all"
             :class="weightStatusBarClass"
@@ -152,7 +152,7 @@
       </div>
 
       <!-- Footer -->
-      <div class="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
+      <div class="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-zinc-800">
         <button
           v-if="rubric"
           type="button"

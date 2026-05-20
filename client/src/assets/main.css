@@ -22,7 +22,7 @@
   @apply select-none;
 }
 .pdf-quote-block .pdf-quote-text {
-  @apply text-slate-700 dark:text-slate-200 italic m-0 border-0 p-0 leading-relaxed text-sm;
+  @apply text-slate-700 dark:text-zinc-200 italic m-0 border-0 p-0 leading-relaxed text-sm;
 }
 .pdf-quote-block .pdf-quote-toolbar {
   @apply mt-2 flex items-center justify-between gap-3;
@@ -68,14 +68,14 @@
          transition-colors;
 }
 .pdf-quote-block .pdf-quote-commentary {
-  @apply mt-2 pt-2 border-t border-slate-200 dark:border-slate-700;
+  @apply mt-2 pt-2 border-t border-slate-200 dark:border-zinc-800;
 }
 .pdf-quote-block .pdf-quote-commentary p {
-  @apply text-slate-800 dark:text-slate-100 my-1 leading-relaxed;
+  @apply text-slate-800 dark:text-zinc-100 my-1 leading-relaxed;
 }
 .pdf-quote-block .pdf-quote-commentary p:only-child:empty::before {
   content: 'Add your note…';
-  @apply text-slate-400 dark:text-slate-500 italic pointer-events-none;
+  @apply text-slate-400 dark:text-zinc-500 italic pointer-events-none;
 }
 .pdf-quote-pulse {
   animation: pdfQuotePulse 1.4s ease-out;
@@ -653,7 +653,7 @@
 
 /* ─── PDF viewer ────────────────────────────────────────────── */
 .pdf-viewer {
-  @apply h-full overflow-y-auto bg-slate-100 dark:bg-slate-950;
+  @apply h-full overflow-y-auto bg-slate-100 dark:bg-zinc-950;
 }
 .pdf-page-container {
   @apply mx-auto my-4 relative bg-white shadow;
@@ -856,8 +856,8 @@ mark {
   @apply w-full border border-slate-300 rounded-md px-3 py-2 text-sm
          focus:outline-none focus:ring-2 focus:ring-indigo-500
          bg-white text-slate-900 placeholder:text-slate-400
-         dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100
-         dark:placeholder:text-slate-500 dark:focus:ring-indigo-400;
+         dark:bg-[#1e1e1e] dark:border-zinc-700 dark:text-zinc-100
+         dark:placeholder:text-zinc-500 dark:focus:ring-indigo-400;
 }
 
 .btn-primary {
@@ -868,5 +868,5 @@ mark {
 .btn-ghost {
   @apply text-slate-600 hover:text-slate-900 text-sm font-medium
          px-4 py-2 rounded-lg hover:bg-slate-100 transition-colors
-         dark:text-slate-300 dark:hover:text-slate-100 dark:hover:bg-slate-700;
+         dark:text-zinc-300 dark:hover:text-zinc-100 dark:hover:bg-zinc-800;
 }

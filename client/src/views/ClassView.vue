@@ -4,14 +4,14 @@
     <div v-if="cls" class="mb-6">
       <div class="flex items-center gap-3 mb-1">
         <span class="w-4 h-4 rounded-full shrink-0" :style="{ backgroundColor: cls.color }" />
-        <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ cls.name }}</h1>
-        <button class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 ml-1" title="Edit class" @click="openEdit">
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-zinc-100">{{ cls.name }}</h1>
+        <button class="text-slate-400 hover:text-slate-700 dark:hover:text-zinc-300 ml-1" title="Edit class" @click="openEdit">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.536-6.536a2 2 0 112.828 2.828L11.828 13.828a2 2 0 01-.828.497l-3 .75.75-3a2 2 0 01.497-.828z" />
           </svg>
         </button>
       </div>
-      <p class="text-sm text-slate-500 dark:text-slate-400 ml-7">
+      <p class="text-sm text-slate-500 dark:text-zinc-400 ml-7">
         <span v-if="cls.code">{{ cls.code }}</span>
         <span v-if="cls.code && cls.instructor"> · </span>
         <span v-if="cls.instructor">{{ cls.instructor }}</span>
@@ -21,25 +21,25 @@
 
     <!-- Tab switcher + actions -->
     <div class="flex items-center justify-between mb-5">
-      <div class="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-sm">
+      <div class="flex rounded-lg border border-slate-200 dark:border-zinc-800 overflow-hidden text-sm">
         <button
           class="px-4 py-1.5 font-medium transition-colors"
-          :class="view === 'list' ? 'bg-slate-900 text-white dark:bg-slate-700' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'"
+          :class="view === 'list' ? 'bg-slate-900 text-white dark:bg-zinc-800' : 'bg-white dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'"
           @click="setView('list')"
         >List</button>
         <button
-          class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-slate-700"
-          :class="view === 'files' ? 'bg-slate-900 text-white dark:bg-slate-700' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'"
+          class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-zinc-800"
+          :class="view === 'files' ? 'bg-slate-900 text-white dark:bg-zinc-800' : 'bg-white dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'"
           @click="setView('files')"
         >Files</button>
         <button
-          class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-slate-700"
-          :class="view === 'calendar' ? 'bg-slate-900 text-white dark:bg-slate-700' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'"
+          class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-zinc-800"
+          :class="view === 'calendar' ? 'bg-slate-900 text-white dark:bg-zinc-800' : 'bg-white dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'"
           @click="setView('calendar')"
         >Calendar</button>
         <button
-          class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-slate-700"
-          :class="view === 'grades' ? 'bg-slate-900 text-white dark:bg-slate-700' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'"
+          class="px-4 py-1.5 font-medium transition-colors border-l border-slate-200 dark:border-zinc-800"
+          :class="view === 'grades' ? 'bg-slate-900 text-white dark:bg-zinc-800' : 'bg-white dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'"
           @click="setView('grades')"
         >Grades</button>
       </div>
@@ -47,7 +47,7 @@
       <div class="flex items-center gap-3">
         <button
           v-if="view === 'calendar'"
-          class="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-medium flex items-center gap-1.5"
+          class="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-zinc-200 font-medium flex items-center gap-1.5"
           @click="showScheduleEditor = true"
         >
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -59,13 +59,13 @@
         <!-- View-format selector -->
         <div
           v-if="view === 'list' && sources.length > 0"
-          class="flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden"
+          class="flex rounded-md border border-slate-200 dark:border-zinc-800 overflow-hidden"
         >
           <button
             type="button"
             title="Rows"
             class="px-2 py-1.5 transition-colors"
-            :class="viewFormat === 'rows' ? 'bg-slate-900 text-white dark:bg-slate-700' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'"
+            :class="viewFormat === 'rows' ? 'bg-slate-900 text-white dark:bg-zinc-800' : 'bg-white dark:bg-[#1e1e1e] text-slate-500 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'"
             @click="setFormat('rows')"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -75,8 +75,8 @@
           <button
             type="button"
             title="Compact"
-            class="px-2 py-1.5 border-l border-slate-200 dark:border-slate-700 transition-colors"
-            :class="viewFormat === 'compact' ? 'bg-slate-900 text-white dark:bg-slate-700' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'"
+            class="px-2 py-1.5 border-l border-slate-200 dark:border-zinc-800 transition-colors"
+            :class="viewFormat === 'compact' ? 'bg-slate-900 text-white dark:bg-zinc-800' : 'bg-white dark:bg-[#1e1e1e] text-slate-500 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'"
             @click="setFormat('compact')"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -86,8 +86,8 @@
           <button
             type="button"
             title="Tiles"
-            class="px-2 py-1.5 border-l border-slate-200 dark:border-slate-700 transition-colors"
-            :class="viewFormat === 'tiles' ? 'bg-slate-900 text-white dark:bg-slate-700' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'"
+            class="px-2 py-1.5 border-l border-slate-200 dark:border-zinc-800 transition-colors"
+            :class="viewFormat === 'tiles' ? 'bg-slate-900 text-white dark:bg-zinc-800' : 'bg-white dark:bg-[#1e1e1e] text-slate-500 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'"
             @click="setFormat('tiles')"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -134,7 +134,7 @@
             class="px-2.5 py-1 text-xs font-medium rounded-full transition-colors"
             :class="typeFilter === t
               ? 'bg-indigo-600 text-white'
-              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300'"
+              : 'bg-white dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 hover:border-indigo-300'"
             @click="typeFilter = t"
           >{{ t }}</button>
         </div>
@@ -157,7 +157,7 @@
         <div
           v-for="src in filteredSources"
           :key="src.id"
-          class="group flex items-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-3 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-pointer"
+          class="group flex items-center gap-3 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-lg px-4 py-3 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-pointer"
           @click="$router.push(`/sources/${src.id}`)"
         >
           <div class="drag-handle text-slate-300 group-hover:text-slate-400 cursor-grab active:cursor-grabbing shrink-0" @click.stop>
@@ -173,7 +173,7 @@
             class="shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors"
             :class="src.completed
               ? 'border-green-500 bg-green-500 hover:bg-transparent hover:border-slate-300'
-              : 'border-slate-300 dark:border-slate-600 hover:border-green-500'"
+              : 'border-slate-300 dark:border-zinc-700 hover:border-green-500'"
             :title="src.completed ? 'Mark as incomplete' : 'Mark as complete'"
             @click.stop="src.completed ? setCompleted(src.id, false) : requestComplete(src.id)"
           >
@@ -186,8 +186,8 @@
           </span>
           <PriorityBadge :priority="src.priority" size="xs" @click.stop @change="setPriority(src.id, $event)" />
           <div class="flex-1 min-w-0">
-            <p class="font-medium text-slate-800 dark:text-slate-200 truncate">{{ src.title }}</p>
-            <p v-if="src.reference" class="text-xs text-slate-400 dark:text-slate-500 truncate">{{ src.reference }}</p>
+            <p class="font-medium text-slate-800 dark:text-zinc-200 truncate">{{ src.title }}</p>
+            <p v-if="src.reference" class="text-xs text-slate-400 dark:text-zinc-500 truncate">{{ src.reference }}</p>
           </div>
           <div class="shrink-0 flex items-center gap-3">
             <span v-if="src.due_date" class="text-xs font-medium" :class="src.completed ? 'text-green-500' : 'text-rose-500'">
@@ -212,7 +212,7 @@
         <div
           v-for="src in filteredSources"
           :key="src.id"
-          class="group flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-3 py-1.5 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-grab active:cursor-grabbing"
+          class="group flex items-center gap-2 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-grab active:cursor-grabbing"
           @click="$router.push(`/sources/${src.id}`)"
         >
           <button
@@ -221,7 +221,7 @@
             class="shrink-0 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-colors"
             :class="src.completed
               ? 'border-green-500 bg-green-500 hover:bg-transparent hover:border-slate-300'
-              : 'border-slate-300 dark:border-slate-600 hover:border-green-500'"
+              : 'border-slate-300 dark:border-zinc-700 hover:border-green-500'"
             :title="src.completed ? 'Mark as incomplete' : 'Mark as complete'"
             @click.stop="src.completed ? setCompleted(src.id, false) : requestComplete(src.id)"
           >
@@ -231,7 +231,7 @@
           </button>
           <span class="w-2 h-2 rounded-full shrink-0" :class="typeDotClass(src.type)" :title="src.type" />
           <PriorityBadge :priority="src.priority" size="xs" @click.stop @change="setPriority(src.id, $event)" />
-          <span class="text-sm truncate flex-1 text-slate-800 dark:text-slate-200">{{ src.title }}</span>
+          <span class="text-sm truncate flex-1 text-slate-800 dark:text-zinc-200">{{ src.title }}</span>
           <span v-if="src.due_date" class="shrink-0 text-xs font-medium" :class="src.completed ? 'text-green-500' : 'text-rose-500'">
             {{ src.completed ? '✓ Done' : 'Due ' + formatDate(src.due_date) }}
           </span>
@@ -253,10 +253,10 @@
         <div
           v-for="src in filteredSources"
           :key="src.id"
-          class="group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-pointer flex flex-col"
+          class="group bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-pointer flex flex-col"
           @click="$router.push(`/sources/${src.id}`)"
         >
-          <div class="relative aspect-[3/4] bg-slate-50 dark:bg-slate-900">
+          <div class="relative aspect-[3/4] bg-slate-50 dark:bg-[#141414]">
             <DeepReadCover
               v-if="sourcePdfCover.get(src.id)"
               :url="sourcePdfCover.get(src.id) as string"
@@ -269,7 +269,7 @@
               <span class="text-white text-base font-semibold opacity-70 px-3 text-center">{{ src.type }}</span>
             </div>
             <button
-              class="absolute top-1.5 right-1.5 p-1 rounded bg-white/85 dark:bg-slate-800/85 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+              class="absolute top-1.5 right-1.5 p-1 rounded bg-white/85 dark:bg-[#1e1e1e]/85 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Delete source"
               @click.stop="deleteSource(src.id)"
             >
@@ -282,7 +282,7 @@
             <div class="flex items-center gap-1 mb-0.5">
               <PriorityBadge v-if="src.priority !== 0" :priority="src.priority" size="xs" :editable="false" />
             </div>
-            <p class="font-medium text-xs text-slate-800 dark:text-slate-200 truncate">{{ src.title }}</p>
+            <p class="font-medium text-xs text-slate-800 dark:text-zinc-200 truncate">{{ src.title }}</p>
             <div class="flex items-center gap-1.5 mt-0.5">
               <span v-if="src.due_date" class="text-[10px] text-rose-500 font-medium truncate">Due {{ formatDate(src.due_date) }}</span>
               <span v-if="src.date" class="text-[10px] text-slate-400 truncate">{{ formatDate(src.date) }}</span>
@@ -321,31 +321,31 @@
     <BaseModal :open="showNewSource" title="Add Source" @close="showNewSource = false">
       <form class="space-y-4" @submit.prevent="createSource">
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Type</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Type</label>
           <select v-model="srcForm.type" class="input">
             <option v-for="t in sourceTypes" :key="t" :value="t">{{ t }}</option>
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Title *</label>
           <input v-model="srcForm.title" required class="input" placeholder="e.g. Lecture 3: Divide & Conquer" />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Date</label>
             <input v-model="srcForm.date" type="date" class="input" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Due date</label>
             <input v-model="srcForm.due_date" type="date" class="input" />
           </div>
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Reference</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Reference</label>
           <input v-model="srcForm.reference" class="input" placeholder="CLRS Ch. 4" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Priority</label>
           <PriorityBadge :priority="srcForm.priority" @change="srcForm.priority = $event" />
         </div>
         <div class="flex justify-end gap-2 pt-2">
@@ -359,25 +359,25 @@
     <BaseModal :open="showEdit" title="Edit Class" @close="showEdit = false">
       <form class="space-y-4" @submit.prevent="saveEdit">
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Class name *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Class name *</label>
           <input v-model="editForm.name" required class="input" />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Course code</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Course code</label>
             <input v-model="editForm.code" class="input" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Color</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Color</label>
             <input v-model="editForm.color" type="color" class="h-9 w-full rounded-md border border-slate-300 cursor-pointer" />
           </div>
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Instructor</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Instructor</label>
           <input v-model="editForm.instructor" class="input" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Schedule (display label)</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Schedule (display label)</label>
           <input v-model="editForm.schedule" class="input" placeholder="MWF 10–11am" />
         </div>
         <div class="flex justify-between pt-2">

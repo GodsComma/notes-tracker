@@ -1,7 +1,7 @@
 <template>
   <BaseModal :open="open" :title="title" @close="$emit('cancel')">
     <div class="space-y-4">
-      <p class="text-sm text-slate-600 dark:text-slate-300">{{ message }}</p>
+      <p class="text-sm text-slate-600 dark:text-zinc-300">{{ message }}</p>
       <div class="flex justify-end gap-2 pt-1">
         <button class="btn-ghost" @click="$emit('cancel')">Cancel</button>
         <button

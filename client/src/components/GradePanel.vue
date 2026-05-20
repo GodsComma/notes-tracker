@@ -9,8 +9,8 @@
       class="text-center py-16 px-4 max-w-md mx-auto"
     >
       <p class="text-4xl mb-3">📊</p>
-      <p class="text-base font-medium text-slate-700 dark:text-slate-300 mb-1">No grading rubric set up</p>
-      <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+      <p class="text-base font-medium text-slate-700 dark:text-zinc-300 mb-1">No grading rubric set up</p>
+      <p class="text-sm text-slate-500 dark:text-zinc-400 mb-5">
         Set up a rubric to track your running grade for this class.
       </p>
       <button class="btn-primary" @click="openEditor">Set up rubric</button>
@@ -28,16 +28,16 @@
       <!-- Breakdown -->
       <div>
         <div class="flex items-center justify-between mb-2.5">
-          <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Grading breakdown</h3>
+          <h3 class="text-sm font-semibold text-slate-700 dark:text-zinc-300">Grading breakdown</h3>
           <button
             class="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
             @click="openEditor"
           >Edit rubric</button>
         </div>
 
-        <div class="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div class="rounded-lg border border-slate-200 dark:border-zinc-800 overflow-hidden">
           <table class="w-full text-sm">
-            <thead class="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+            <thead class="bg-slate-50 dark:bg-[#1e1e1e] text-slate-500 dark:text-zinc-400">
               <tr>
                 <th class="text-left px-4 py-2 font-medium">Category</th>
                 <th class="text-right px-4 py-2 font-medium w-20">Weight</th>
@@ -49,9 +49,9 @@
               <tr
                 v-for="cat in rubric.categories"
                 :key="cat.id"
-                class="border-t border-slate-100 dark:border-slate-700"
+                class="border-t border-slate-100 dark:border-zinc-800"
               >
-                <td class="px-4 py-2.5 text-slate-800 dark:text-slate-200">
+                <td class="px-4 py-2.5 text-slate-800 dark:text-zinc-200">
                   <div class="flex items-center gap-2">
                     <span>{{ cat.name }}</span>
                     <span
@@ -60,7 +60,7 @@
                     >Extra</span>
                   </div>
                 </td>
-                <td class="px-4 py-2.5 text-right text-slate-600 dark:text-slate-400">{{ cat.weight }}%</td>
+                <td class="px-4 py-2.5 text-right text-slate-600 dark:text-zinc-400">{{ cat.weight }}%</td>
                 <td class="px-4 py-2.5">
                   <ScoreInput
                     :category="cat"
@@ -72,7 +72,7 @@
                 </td>
               </tr>
             </tbody>
-            <tfoot class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs">
+            <tfoot class="bg-slate-50 dark:bg-[#1e1e1e] text-slate-600 dark:text-zinc-400 text-xs">
               <tr>
                 <td class="px-4 py-2 font-medium">Total</td>
                 <td class="px-4 py-2 text-right font-medium">
@@ -203,8 +203,8 @@ function contribLabel(cat: GradeCategory): string {
 
 function contribClass(cat: GradeCategory): string {
   return cat.earned === null || cat.earned === undefined
-    ? 'text-slate-300 dark:text-slate-600'
-    : 'text-slate-700 dark:text-slate-200 font-medium'
+    ? 'text-slate-300 dark:text-zinc-600'
+    : 'text-slate-700 dark:text-zinc-200 font-medium'
 }
 
 // --- Inline subcomponents ---
@@ -227,14 +227,14 @@ const GradeStat = defineComponent({
         class: [
           'rounded-xl border p-4 transition-colors',
           p.primary
-            ? 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
-            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+            ? 'border-slate-300 dark:border-zinc-700 bg-white dark:bg-[#1e1e1e]'
+            : 'border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-[#1e1e1e]/50'
         ]
       }, [
-        h('p', { class: 'text-xs font-medium text-slate-500 dark:text-slate-400 mb-2' }, p.label),
+        h('p', { class: 'text-xs font-medium text-slate-500 dark:text-zinc-400 mb-2' }, p.label),
         p.pct === null
           ? h('div', { class: 'flex items-baseline gap-2' }, [
-              h('span', { class: 'text-2xl font-semibold text-slate-300 dark:text-slate-600' }, '—')
+              h('span', { class: 'text-2xl font-semibold text-slate-300 dark:text-zinc-600' }, '—')
             ])
           : h('div', { class: 'flex items-baseline gap-2 flex-wrap' }, [
               letter.value
@@ -248,7 +248,7 @@ const GradeStat = defineComponent({
                 : null,
               h('span', {
                 class: [
-                  'tabular-nums text-slate-600 dark:text-slate-300',
+                  'tabular-nums text-slate-600 dark:text-zinc-300',
                   p.primary ? 'text-xl font-semibold' : 'text-base'
                 ]
               }, `${p.pct.toFixed(1)}%`)
@@ -283,7 +283,7 @@ const ScoreInput = defineComponent({
       emit('change', { earned, possible })
     }
 
-    const inputClass = 'text-right rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500'
+    const inputClass = 'text-right rounded border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#141414] text-slate-900 dark:text-zinc-100 px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500'
 
     return () => h('div', { class: 'flex items-center gap-1 justify-end' }, [
       h('input', {
@@ -298,9 +298,9 @@ const ScoreInput = defineComponent({
         onChange: commit,
         onBlur: commit
       }),
-      h('span', { class: 'text-slate-400 dark:text-slate-500 text-xs' }, '/'),
+      h('span', { class: 'text-slate-400 dark:text-zinc-500 text-xs' }, '/'),
       isPercentMode.value
-        ? h('span', { class: 'text-slate-500 dark:text-slate-400 text-xs w-9' }, '100')
+        ? h('span', { class: 'text-slate-500 dark:text-zinc-400 text-xs w-9' }, '100')
         : h('input', {
             type: 'number',
             step: '1',

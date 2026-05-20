@@ -8,12 +8,12 @@
     @confirm="confirmComplete"
     @cancel="pendingComplete = null"
   />
-  <div class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/50 p-5 flex flex-col gap-4">
+  <div class="rounded-2xl bg-white dark:bg-[#141414]/80 border border-slate-200 dark:border-zinc-800/50 p-5 flex flex-col gap-4">
     <!-- Header -->
     <div class="flex items-start justify-between gap-2">
       <div>
         <h2 class="text-slate-900 dark:text-white font-semibold text-base">Upcoming</h2>
-        <p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+        <p class="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
           {{ semesterName }}
           <span v-if="totalIncomplete > 0"> · {{ totalIncomplete }} {{ weekFilter === 'this' ? 'this week' : 'next week' }}</span>
         </p>
@@ -25,15 +25,15 @@
           class="px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors"
           :class="weekFilter === w.value
             ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
-            : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+            : 'text-slate-400 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'"
           @click="weekFilter = w.value"
         >{{ w.label }}</button>
       </div>
     </div>
 
-    <div v-if="loading" class="text-sm text-slate-400 dark:text-slate-500">Loading…</div>
+    <div v-if="loading" class="text-sm text-slate-400 dark:text-zinc-500">Loading…</div>
 
-    <div v-else-if="incomplete.length === 0 && completed.length === 0" class="text-sm text-slate-400 dark:text-slate-500 py-2">
+    <div v-else-if="incomplete.length === 0 && completed.length === 0" class="text-sm text-slate-400 dark:text-zinc-500 py-2">
       Nothing due {{ weekFilter === 'this' ? 'this week' : 'next week' }}.
     </div>
 
@@ -49,22 +49,22 @@
         <div
           v-for="src in group.items"
           :key="src.id"
-          class="flex items-start gap-2 rounded-lg px-3 py-2 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group"
+          class="flex items-start gap-2 rounded-lg px-3 py-2 bg-slate-50 dark:bg-[#1e1e1e]/60 hover:bg-slate-100 dark:hover:bg-zinc-800/60 transition-colors group"
         >
           <!-- Completion circle -->
           <button
             type="button"
-            class="mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 transition-colors flex items-center justify-center border-slate-300 dark:border-slate-600 hover:border-green-500 dark:hover:border-green-400"
+            class="mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 transition-colors flex items-center justify-center border-slate-300 dark:border-zinc-700 hover:border-green-500 dark:hover:border-green-400"
             title="Mark as complete"
             @click.prevent="requestComplete(src)"
           />
 
           <RouterLink :to="`/sources/${src.id}`" class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+            <p class="text-sm font-medium text-slate-800 dark:text-zinc-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
               {{ src.title }}
             </p>
             <div class="flex items-center gap-2 mt-0.5">
-              <span class="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 truncate">
+              <span class="flex items-center gap-1 text-[10px] text-slate-400 dark:text-zinc-500 truncate">
                 <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: src.class_color }" />
                 {{ src.class_name }}
               </span>
@@ -79,7 +79,7 @@
       </div>
 
       <!-- Show-all footer for incomplete items -->
-      <div v-if="totalIncomplete > MAX_VISIBLE" class="border-t border-slate-100 dark:border-slate-700/50 pt-2">
+      <div v-if="totalIncomplete > MAX_VISIBLE" class="border-t border-slate-100 dark:border-zinc-800/50 pt-2">
         <RouterLink
           :to="`/classes/${firstClassId}`"
           class="text-xs text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
@@ -87,10 +87,10 @@
       </div>
 
       <!-- Completed items (collapsed section) -->
-      <div v-if="completed.length > 0" class="border-t border-slate-100 dark:border-slate-700/50 pt-3 space-y-1">
+      <div v-if="completed.length > 0" class="border-t border-slate-100 dark:border-zinc-800/50 pt-3 space-y-1">
         <button
           type="button"
-          class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+          class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 flex items-center gap-1.5 hover:text-slate-600 dark:hover:text-zinc-300 transition-colors"
           @click="showCompleted = !showCompleted"
         >
           <svg class="w-3 h-3 transition-transform" :class="{ 'rotate-90': showCompleted }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -117,8 +117,8 @@
               </svg>
             </button>
             <RouterLink :to="`/sources/${src.id}`" class="flex-1 min-w-0">
-              <p class="text-sm text-slate-400 dark:text-slate-500 truncate line-through">{{ src.title }}</p>
-              <span class="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
+              <p class="text-sm text-slate-400 dark:text-zinc-500 truncate line-through">{{ src.title }}</p>
+              <span class="text-[10px] text-slate-400 dark:text-zinc-500 flex items-center gap-1">
                 <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: src.class_color }" />
                 {{ src.class_name }}
               </span>
@@ -231,7 +231,7 @@ function groupLabelClass(priority: number): string {
   if (priority === 1) return 'text-rose-500'
   if (priority === 2) return 'text-amber-500'
   if (priority === 3) return 'text-blue-400'
-  return 'text-slate-400 dark:text-slate-500'
+  return 'text-slate-400 dark:text-zinc-500'
 }
 
 function dueDateClass(date: string): string {
@@ -240,7 +240,7 @@ function dueDateClass(date: string): string {
   const diff = Math.floor((d.getTime() - today.getTime()) / 86_400_000)
   if (diff < 0) return 'text-rose-500'
   if (diff <= 3) return 'text-amber-500'
-  return 'text-slate-400 dark:text-slate-500'
+  return 'text-slate-400 dark:text-zinc-500'
 }
 
 function dueDateLabel(date: string): string {

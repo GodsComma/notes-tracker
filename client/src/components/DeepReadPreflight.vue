@@ -5,8 +5,8 @@
       <div class="flex items-center gap-3 -mt-2">
         <div class="w-2 h-10 rounded shrink-0" :style="{ backgroundColor: item.class_color || '#6366f1' }" />
         <div class="min-w-0">
-          <p class="font-medium text-slate-900 dark:text-slate-100 truncate">{{ item.filename }}</p>
-          <p class="text-xs text-slate-500 dark:text-slate-400 truncate">
+          <p class="font-medium text-slate-900 dark:text-zinc-100 truncate">{{ item.filename }}</p>
+          <p class="text-xs text-slate-500 dark:text-zinc-400 truncate">
             {{ item.class_name }}<span v-if="item.source_title"> · {{ item.source_title }}</span>
           </p>
         </div>
@@ -14,7 +14,7 @@
 
       <!-- Timer -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Session length</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-2">Session length</label>
         <div class="flex flex-wrap gap-2">
           <button
             v-for="m in TIMER_PRESETS"
@@ -23,7 +23,7 @@
             class="px-3 py-1.5 text-sm rounded-md border transition-colors"
             :class="settings.durationMin === m
               ? 'bg-indigo-600 border-indigo-600 text-white'
-              : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:border-indigo-400'"
+              : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:border-indigo-400'"
             @click="setDuration(m)"
           >
             {{ m }}m
@@ -33,7 +33,7 @@
             class="px-3 py-1.5 text-sm rounded-md border transition-colors"
             :class="customMode
               ? 'bg-indigo-600 border-indigo-600 text-white'
-              : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:border-indigo-400'"
+              : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:border-indigo-400'"
             @click="customMode = true"
           >
             Custom
@@ -52,7 +52,7 @@
 
       <!-- Theme -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Reading theme</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-2">Reading theme</label>
         <div class="grid grid-cols-2 gap-2">
           <button
             v-for="t in THEMES"
@@ -61,7 +61,7 @@
             class="flex items-center gap-2 px-3 py-2 text-sm rounded-md border transition-all"
             :class="settings.theme === t.id
               ? 'border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-800'
-              : 'border-slate-200 dark:border-slate-600 hover:border-indigo-400'"
+              : 'border-slate-200 dark:border-zinc-700 hover:border-indigo-400'"
             :style="{ backgroundColor: t.bg, color: t.fg }"
             @click="settings.theme = t.id"
           >
@@ -73,7 +73,7 @@
 
       <!-- Reading ruler -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Reading ruler</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-2">Reading ruler</label>
         <div class="flex gap-2">
           <button
             v-for="opt in RULER_OPTIONS"
@@ -82,7 +82,7 @@
             class="flex-1 px-3 py-2 text-xs rounded-md border transition-colors"
             :class="settings.ruler === opt.id
               ? 'bg-indigo-600 border-indigo-600 text-white'
-              : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:border-indigo-400'"
+              : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:border-indigo-400'"
             @click="settings.ruler = opt.id"
           >
             <div class="font-medium">{{ opt.label }}</div>
@@ -93,14 +93,14 @@
 
       <!-- Annotations -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Annotations</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-2">Annotations</label>
         <div class="flex gap-2">
           <button
             type="button"
             class="flex-1 px-3 py-2 text-xs rounded-md border transition-colors"
             :class="settings.annotations === 'on' && annotationsAvailable
               ? 'bg-indigo-600 border-indigo-600 text-white'
-              : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300'"
+              : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300'"
             :disabled="!annotationsAvailable"
             @click="settings.annotations = 'on'"
           >
@@ -112,21 +112,21 @@
             class="flex-1 px-3 py-2 text-xs rounded-md border transition-colors"
             :class="settings.annotations === 'off' || !annotationsAvailable
               ? 'bg-indigo-600 border-indigo-600 text-white'
-              : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:border-indigo-400'"
+              : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:border-indigo-400'"
             @click="settings.annotations = 'off'"
           >
             <div class="font-medium">Off</div>
             <div class="text-[10px] opacity-80 mt-0.5">Pure reading; no tooltip</div>
           </button>
         </div>
-        <p v-if="!annotationsAvailable" class="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+        <p v-if="!annotationsAvailable" class="text-xs text-slate-500 dark:text-zinc-400 mt-1.5">
           Attach this PDF to a source to enable notes.
         </p>
-        <label v-else class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 mt-2 cursor-pointer">
+        <label v-else class="flex items-center gap-2 text-xs text-slate-600 dark:text-zinc-400 mt-2 cursor-pointer">
           <input
             v-model="settings.autoHideDrawer"
             type="checkbox"
-            class="rounded border-slate-300 dark:border-slate-600"
+            class="rounded border-slate-300 dark:border-zinc-700"
             :disabled="settings.annotations === 'off'"
           />
           Auto-hide notes drawer after 30s of inactivity
@@ -138,11 +138,11 @@
         <input
           v-model="settings.suppressNotifications"
           type="checkbox"
-          class="mt-0.5 rounded border-slate-300 dark:border-slate-600"
+          class="mt-0.5 rounded border-slate-300 dark:border-zinc-700"
         />
-        <span class="text-slate-700 dark:text-slate-300">
+        <span class="text-slate-700 dark:text-zinc-300">
           Block in-app notifications
-          <span class="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <span class="block text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
             For full peace, also enable Do Not Disturb on your system.
           </span>
         </span>

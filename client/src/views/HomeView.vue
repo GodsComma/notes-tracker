@@ -3,7 +3,7 @@
     <!-- Header: title + tab bar + contextual action -->
     <div class="flex items-start justify-between mb-8">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-zinc-100">
           {{ semesterStore.activeSemester?.name ?? 'Select a semester' }}
         </h1>
         <!-- Tab bar -->
@@ -11,8 +11,8 @@
           <button
             class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
             :class="tab === 'stats'
-              ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'"
+              ? 'bg-slate-200 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100'
+              : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-100'"
             @click="tab = 'stats'"
           >
             Focus Stats
@@ -20,8 +20,8 @@
           <button
             class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
             :class="tab === 'classes'
-              ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'"
+              ? 'bg-slate-200 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100'
+              : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-100'"
             @click="tab = 'classes'"
           >
             Classes
@@ -44,36 +44,36 @@
 
       <!-- Empty state: no semester exists -->
       <div v-else-if="!semesterStore.activeSemesterID" class="max-w-3xl">
-        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3">
           Get started
         </p>
         <div class="space-y-2.5">
           <button
-            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-sm transition-all group"
+            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-xl hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-sm transition-all group"
             @click="openNewSemester"
           >
             <span class="shrink-0 w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-semibold">1</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-slate-900 dark:text-slate-100">Create a semester</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Set a name and date range — this groups your classes and powers the calendar.</p>
+              <p class="font-medium text-slate-900 dark:text-zinc-100">Create a semester</p>
+              <p class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Set a name and date range — this groups your classes and powers the calendar.</p>
             </div>
             <span class="text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all">→</span>
           </button>
 
-          <div class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl opacity-40 cursor-not-allowed select-none">
-            <span class="shrink-0 w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 flex items-center justify-center font-semibold">2</span>
+          <div class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-xl opacity-40 cursor-not-allowed select-none">
+            <span class="shrink-0 w-9 h-9 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 flex items-center justify-center font-semibold">2</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-slate-900 dark:text-slate-100">Add your first class</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Available after you create a semester.</p>
+              <p class="font-medium text-slate-900 dark:text-zinc-100">Add your first class</p>
+              <p class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Available after you create a semester.</p>
             </div>
             <span class="text-slate-300">→</span>
           </div>
 
-          <div class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl opacity-40 cursor-not-allowed select-none">
-            <span class="shrink-0 w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 flex items-center justify-center font-semibold">3</span>
+          <div class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-xl opacity-40 cursor-not-allowed select-none">
+            <span class="shrink-0 w-9 h-9 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 flex items-center justify-center font-semibold">3</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-slate-900 dark:text-slate-100">Drop a PDF, then Focus Read</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Attach a PDF to any class — it'll show up in your Library, ready for distraction-free reading.</p>
+              <p class="font-medium text-slate-900 dark:text-zinc-100">Drop a PDF, then Focus Read</p>
+              <p class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Attach a PDF to any class — it'll show up in your Library, ready for distraction-free reading.</p>
             </div>
             <span class="text-slate-300">→</span>
           </div>
@@ -82,42 +82,42 @@
 
       <!-- Empty state: semester exists but no classes yet -->
       <div v-else-if="classStore.classes.length === 0" class="max-w-3xl">
-        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3">
           Get started
         </p>
         <div class="space-y-2.5">
           <button
-            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-sm transition-all group"
+            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-xl hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-sm transition-all group"
             @click="openNewClass"
           >
             <span class="shrink-0 w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-semibold">1</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-slate-900 dark:text-slate-100">Add your first class</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Set name, color, and instructor. Meeting times come next.</p>
+              <p class="font-medium text-slate-900 dark:text-zinc-100">Add your first class</p>
+              <p class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Set name, color, and instructor. Meeting times come next.</p>
             </div>
             <span class="text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all">→</span>
           </button>
 
           <button
-            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl opacity-60 cursor-not-allowed"
+            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-xl opacity-60 cursor-not-allowed"
             disabled
           >
-            <span class="shrink-0 w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 flex items-center justify-center font-semibold">2</span>
+            <span class="shrink-0 w-9 h-9 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 flex items-center justify-center font-semibold">2</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-slate-900 dark:text-slate-100">Set up your week</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Add meeting times to populate the calendar. Available after your first class.</p>
+              <p class="font-medium text-slate-900 dark:text-zinc-100">Set up your week</p>
+              <p class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Add meeting times to populate the calendar. Available after your first class.</p>
             </div>
             <span class="text-slate-300">→</span>
           </button>
 
           <RouterLink
             to="/library"
-            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-sm transition-all group"
+            class="w-full text-left flex items-start gap-4 p-4 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-xl hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-sm transition-all group"
           >
             <span class="shrink-0 w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-semibold">3</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-slate-900 dark:text-slate-100">Drop a PDF, then Focus Read</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Attach a PDF to any class — it'll show up in your Library, ready for distraction-free reading.</p>
+              <p class="font-medium text-slate-900 dark:text-zinc-100">Drop a PDF, then Focus Read</p>
+              <p class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Attach a PDF to any class — it'll show up in your Library, ready for distraction-free reading.</p>
             </div>
             <span class="text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all">→</span>
           </RouterLink>
@@ -129,20 +129,20 @@
           v-for="cls in classStore.classes"
           :key="cls.id"
           :to="`/classes/${cls.id}`"
-          class="group block bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden hover:shadow-md dark:hover:shadow-slate-900 transition-shadow"
+          class="group block bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden hover:shadow-md dark:hover:shadow-zinc-950 transition-shadow"
         >
           <div class="h-2" :style="{ backgroundColor: cls.color }" />
           <div class="p-5">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <p class="font-semibold text-slate-900 dark:text-slate-100 truncate">{{ cls.name }}</p>
-                <p v-if="cls.code" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ cls.code }}</p>
+                <p class="font-semibold text-slate-900 dark:text-zinc-100 truncate">{{ cls.name }}</p>
+                <p v-if="cls.code" class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{{ cls.code }}</p>
               </div>
               <span class="shrink-0 w-3 h-3 rounded-full mt-1" :style="{ backgroundColor: cls.color }" />
             </div>
             <div class="mt-3 space-y-1">
-              <p v-if="cls.instructor" class="text-xs text-slate-500 dark:text-slate-400">{{ cls.instructor }}</p>
-              <p v-if="cls.schedule" class="text-xs text-slate-500 dark:text-slate-400">{{ cls.schedule }}</p>
+              <p v-if="cls.instructor" class="text-xs text-slate-500 dark:text-zinc-400">{{ cls.instructor }}</p>
+              <p v-if="cls.schedule" class="text-xs text-slate-500 dark:text-zinc-400">{{ cls.schedule }}</p>
             </div>
           </div>
         </RouterLink>
@@ -164,21 +164,21 @@
       <!-- Step 1: Class Info -->
       <form v-if="step === 1" class="space-y-4" @submit.prevent="goToStep2">
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Class name *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Class name *</label>
           <input v-model="form.name" required class="input" placeholder="e.g. Algorithms" />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Course code</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Course code</label>
             <input v-model="form.code" class="input" placeholder="CS 161" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Color</label>
-            <input v-model="form.color" type="color" class="h-9 w-full rounded-md border border-slate-300 dark:border-slate-600 cursor-pointer dark:bg-slate-700" />
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Color</label>
+            <input v-model="form.color" type="color" class="h-9 w-full rounded-md border border-slate-300 dark:border-zinc-700 cursor-pointer dark:bg-zinc-800" />
           </div>
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Instructor</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Instructor</label>
           <input v-model="form.instructor" class="input" placeholder="Prof. Smith" />
         </div>
         <div class="flex justify-end gap-2 pt-2">
@@ -192,8 +192,8 @@
       <!-- Step 2: Meeting Times -->
       <div v-else-if="newClassID !== null" class="space-y-4">
         <div>
-          <p class="text-sm text-slate-700 dark:text-slate-300">Add weekly meeting times (optional)</p>
-          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <p class="text-sm text-slate-700 dark:text-zinc-300">Add weekly meeting times (optional)</p>
+          <p class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
             These repeat across the semester and appear on your calendar.
           </p>
         </div>

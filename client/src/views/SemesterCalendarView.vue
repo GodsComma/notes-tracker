@@ -2,8 +2,8 @@
   <div class="p-8">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Semester Calendar</h1>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">{{ semesterStore.activeSemester?.name }}</p>
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-zinc-100">Semester Calendar</h1>
+        <p class="text-sm text-slate-500 dark:text-zinc-400 mt-1">{{ semesterStore.activeSemester?.name }}</p>
       </div>
     </div>
 
@@ -14,7 +14,7 @@
         :key="cls.id"
         class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all"
         :class="hiddenClassIDs.has(cls.id)
-          ? 'border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800'
+          ? 'border-slate-200 dark:border-zinc-800 text-slate-400 dark:text-zinc-500 bg-white dark:bg-[#1e1e1e]'
           : 'border-transparent text-white'"
         :style="hiddenClassIDs.has(cls.id) ? {} : { backgroundColor: cls.color }"
         @click="toggleClass(cls.id)"

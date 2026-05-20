@@ -5,10 +5,10 @@
         <!-- Backdrop -->
         <div class="absolute inset-0 bg-black/40" @click="$emit('close')" />
         <!-- Panel -->
-        <div class="relative bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md p-6 z-10">
+        <div class="relative bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-xl w-full max-w-md p-6 z-10">
           <div class="flex items-center justify-between mb-5">
-            <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">{{ title }}</h2>
-            <button class="text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 transition-colors" @click="$emit('close')">
+            <h2 class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{{ title }}</h2>
+            <button class="text-slate-400 hover:text-slate-700 dark:text-zinc-500 dark:hover:text-zinc-300 transition-colors" @click="$emit('close')">
               <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>

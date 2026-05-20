@@ -174,8 +174,7 @@
             {{ loading ? '…' : mode === 'login' ? 'Sign in' : 'Create account' }}
           </button>
         </form>
-
-        <!-- <p class="mt-6 text-center text-sm" :class="isDark ? 'text-zinc-500' : 'text-slate-500'">
+        <p class="mt-6 text-center text-sm" :class="isDark ? 'text-zinc-500' : 'text-slate-500'">
           {{ mode === 'login' ? "Don't have an account?" : 'Already have an account?' }}
           <button
             class="ml-1 font-medium hover:underline"
@@ -184,7 +183,7 @@
           >
             {{ mode === 'login' ? 'Create one' : 'Sign in' }}
           </button>
-        </p> -->
+        </p>
       </div>
     </div>
   </div>

@@ -25,8 +25,8 @@
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Library</h1>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-zinc-100">Library</h1>
+        <p class="text-sm text-slate-500 dark:text-zinc-400 mt-1">
           Every PDF across your classes. Drop a PDF anywhere to add it.
         </p>
       </div>
@@ -50,12 +50,12 @@
       class="flex flex-col items-center justify-center py-20 cursor-pointer group"
       @click="fileInputRef?.click()"
     >
-      <div class="w-full max-w-sm border-2 border-dashed border-slate-300 dark:border-slate-600 group-hover:border-indigo-400 dark:group-hover:border-indigo-500 rounded-2xl p-12 text-center transition-colors">
+      <div class="w-full max-w-sm border-2 border-dashed border-slate-300 dark:border-zinc-700 group-hover:border-indigo-400 dark:group-hover:border-indigo-500 rounded-2xl p-12 text-center transition-colors">
         <p class="text-5xl mb-4">📚</p>
-        <p class="text-base font-medium text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+        <p class="text-base font-medium text-slate-600 dark:text-zinc-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
           Drop PDFs here or click to browse
         </p>
-        <p class="text-sm text-slate-400 dark:text-slate-500 mt-1">No class or semester required</p>
+        <p class="text-sm text-slate-400 dark:text-zinc-500 mt-1">No class or semester required</p>
       </div>
     </div>
 
@@ -65,11 +65,11 @@
       <div
         v-for="p in pending"
         :key="p.uid"
-        class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden border-2 border-dashed"
-        :class="p.error ? 'border-red-300 dark:border-red-700' : 'border-slate-300 dark:border-slate-600 animate-pulse'"
+        class="bg-white dark:bg-[#1e1e1e] rounded-xl overflow-hidden border-2 border-dashed"
+        :class="p.error ? 'border-red-300 dark:border-red-700' : 'border-slate-300 dark:border-zinc-700 animate-pulse'"
       >
-        <div class="aspect-[3/4] bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
-          <svg v-if="!p.error" class="w-8 h-8 text-slate-300 dark:text-slate-600 animate-spin" fill="none" viewBox="0 0 24 24">
+        <div class="aspect-[3/4] bg-slate-100 dark:bg-[#141414] flex items-center justify-center">
+          <svg v-if="!p.error" class="w-8 h-8 text-slate-300 dark:text-zinc-600 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -78,7 +78,7 @@
           </svg>
         </div>
         <div class="p-3">
-          <p class="text-sm font-medium text-slate-500 dark:text-slate-400 truncate">{{ p.filename }}</p>
+          <p class="text-sm font-medium text-slate-500 dark:text-zinc-400 truncate">{{ p.filename }}</p>
           <p v-if="p.error" class="text-xs text-red-500 mt-1">{{ p.error }}</p>
           <p v-else class="text-xs text-slate-400 mt-1">Uploading…</p>
         </div>
@@ -88,7 +88,7 @@
       <div
         v-for="item in allItems"
         :key="item.id"
-        class="group bg-white dark:bg-slate-800 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-500 transition-all relative"
+        class="group bg-white dark:bg-[#1e1e1e] rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-500 transition-all relative"
       >
         <button type="button" class="block w-full text-left" @click="open(item)">
           <DeepReadCover :url="api.attachments.fileUrl(item.id, 'inline')" />
@@ -98,16 +98,16 @@
                 class="w-2 h-2 rounded-full shrink-0"
                 :style="{ backgroundColor: item.class_color ?? '#94a3b8' }"
               />
-              <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              <span class="text-[11px] text-slate-500 dark:text-zinc-400 truncate">
                 {{ item.class_name ?? 'Unassigned' }}
               </span>
             </div>
-            <p class="text-sm font-medium text-slate-900 dark:text-slate-100 line-clamp-2">{{ item.filename }}</p>
+            <p class="text-sm font-medium text-slate-900 dark:text-zinc-100 line-clamp-2">{{ item.filename }}</p>
             <div v-if="progressOf(item.id)" class="mt-2">
-              <div class="h-1 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+              <div class="h-1 rounded-full bg-slate-200 dark:bg-zinc-800 overflow-hidden">
                 <div class="h-full bg-indigo-500" :style="{ width: progressPct(item.id) + '%' }" />
               </div>
-              <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              <p class="text-[10px] text-slate-500 dark:text-zinc-400 mt-1">
                 Page {{ progressOf(item.id)?.lastPage }} of {{ progressOf(item.id)?.totalPages || '–' }}
               </p>
             </div>
@@ -118,7 +118,7 @@
         <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             type="button"
-            class="text-[11px] font-medium px-2 py-1 rounded-full bg-white/90 dark:bg-slate-900/90 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors"
+            class="text-[11px] font-medium px-2 py-1 rounded-full bg-white/90 dark:bg-[#141414]/90 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors"
             title="Start focus session"
             @click.stop="open(item)"
           >
@@ -126,7 +126,7 @@
           </button>
           <button
             type="button"
-            class="p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            class="p-1.5 rounded-full bg-white/90 dark:bg-[#141414]/90 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 transition-colors"
             title="Focus session settings"
             @click.stop="focusStore.openSettings(item, '/library')"
           >

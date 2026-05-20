@@ -1,15 +1,15 @@
 <template>
   <div class="flex flex-col h-full">
     <!-- Breadcrumb + source header -->
-    <div class="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0">
+    <div class="border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#141414] shrink-0">
       <!-- Collapsed strip -->
       <div v-if="headerCollapsed" class="px-8 py-2 flex items-center justify-between gap-4">
         <div class="flex items-center gap-2 min-w-0">
           <span v-if="source" class="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full" :class="typeBadgeClass(source.type)">{{ source.type }}</span>
-          <span class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ source?.title }}</span>
+          <span class="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{{ source?.title }}</span>
         </div>
         <button
-          class="shrink-0 p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          class="shrink-0 p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
           title="Expand header"
           @click="headerCollapsed = false"
         >
@@ -27,7 +27,7 @@
             <span>/</span>
             <RouterLink v-if="cls" :to="`/classes/${cls.id}`" class="hover:text-slate-700">{{ cls.name }}</RouterLink>
             <span>/</span>
-            <span class="text-slate-600 dark:text-slate-400 truncate max-w-48">{{ source?.title }}</span>
+            <span class="text-slate-600 dark:text-zinc-400 truncate max-w-48">{{ source?.title }}</span>
           </nav>
 
           <div v-if="source" class="flex items-start justify-between gap-4">
@@ -36,8 +36,8 @@
                 {{ source.type }}
               </span>
               <div class="flex-1 min-w-0">
-                <h1 class="text-xl font-bold text-slate-900 dark:text-slate-100 truncate">{{ source.title }}</h1>
-                <p v-if="source.reference || source.date" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <h1 class="text-xl font-bold text-slate-900 dark:text-zinc-100 truncate">{{ source.title }}</h1>
+                <p v-if="source.reference || source.date" class="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
                   <span v-if="source.date">{{ formatDate(source.date) }}</span>
                   <span v-if="source.date && source.reference"> · </span>
                   <span v-if="source.reference">{{ source.reference }}</span>
@@ -52,7 +52,7 @@
                 class="flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded transition-colors"
                 :class="editorStore.locked
                   ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300'
-                  : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                  : 'text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200'"
                 :title="editorStore.locked ? 'Unlock note (⌘L)' : 'Lock note (⌘L)'"
                 @click="toggleLock"
               >
@@ -69,7 +69,7 @@
               <select
                 v-if="pdfAttachments.length > 1"
                 v-model.number="activePdfId"
-                class="text-xs border border-slate-200 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                class="text-xs border border-slate-200 dark:border-zinc-700 rounded px-2 py-1 bg-white dark:bg-[#1e1e1e] text-slate-700 dark:text-zinc-300"
               >
                 <option v-for="p in pdfAttachments" :key="p.id" :value="p.id">{{ p.filename }}</option>
               </select>
@@ -87,7 +87,7 @@
                   Focus Mode
                 </button>
                 <button
-                  class="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                  class="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition-colors"
                   title="Focus session settings"
                   @click="openFocusSettings"
                 >
@@ -117,7 +117,7 @@
 
               <!-- Collapse header -->
               <button
-                class="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                class="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
                 title="Collapse header"
                 @click="headerCollapsed = true"
               >
@@ -136,7 +136,7 @@
       <!-- PDF pane -->
       <div
         v-if="activePdf"
-        class="shrink-0 overflow-hidden border-r border-slate-200 dark:border-slate-700"
+        class="shrink-0 overflow-hidden border-r border-slate-200 dark:border-zinc-800"
         :style="{ width: pdfPaneWidth + 'px' }"
       >
         <PdfViewer
@@ -151,7 +151,7 @@
       <!-- Drag divider -->
       <div
         v-if="activePdf"
-        class="w-1.5 cursor-col-resize bg-slate-200 dark:bg-slate-700 hover:bg-indigo-400 dark:hover:bg-indigo-500 transition-colors shrink-0"
+        class="w-1.5 cursor-col-resize bg-slate-200 dark:bg-zinc-800 hover:bg-indigo-400 dark:hover:bg-indigo-500 transition-colors shrink-0"
         @mousedown="startDrag"
       />
 
@@ -172,9 +172,9 @@
       <!-- Attachments side panel -->
       <aside
         v-if="showAttachments"
-        class="w-80 shrink-0 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-y-auto p-4"
+        class="w-80 shrink-0 border-l border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-[#1e1e1e] overflow-y-auto p-4"
       >
-        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-3">Attachments</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500 mb-3">Attachments</p>
         <AttachmentPanel
           v-if="noteLoaded"
           :scope="{ type: 'source', id: sourceID }"
@@ -189,22 +189,22 @@
     <BaseModal :open="showEdit" title="Edit Source" @close="showEdit = false">
       <form class="space-y-4" @submit.prevent="saveSource">
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Type</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Type</label>
           <select v-model="editForm.type" class="input">
             <option v-for="t in sourceTypes" :key="t" :value="t">{{ t }}</option>
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Title *</label>
           <input v-model="editForm.title" required class="input" />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Date</label>
             <input v-model="editForm.date" type="date" class="input" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Reference</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Reference</label>
             <input v-model="editForm.reference" class="input" />
           </div>
         </div>

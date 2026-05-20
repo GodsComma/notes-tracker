@@ -1,15 +1,15 @@
 <template>
   <Teleport to="body">
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="$emit('close')">
-      <div class="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div class="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <div class="flex items-start justify-between mb-5">
           <div>
-            <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Assign to…</h2>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-xs">{{ item.filename }}</p>
+            <h2 class="text-base font-semibold text-slate-900 dark:text-zinc-100">Assign to…</h2>
+            <p class="text-sm text-slate-500 dark:text-zinc-400 mt-0.5 truncate max-w-xs">{{ item.filename }}</p>
           </div>
           <button
             type="button"
-            class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 ml-4 shrink-0"
+            class="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 ml-4 shrink-0"
             @click="$emit('close')"
           >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -25,7 +25,7 @@
           <div class="flex gap-2 mb-4">
             <button
               type="button"
-              :class="mode === 'class' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'"
+              :class="mode === 'class' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700'"
               class="flex-1 text-sm font-medium py-1.5 rounded-lg transition-colors"
               @click="mode = 'class'; selectedSourceId = null"
             >
@@ -33,7 +33,7 @@
             </button>
             <button
               type="button"
-              :class="mode === 'source' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'"
+              :class="mode === 'source' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700'"
               class="flex-1 text-sm font-medium py-1.5 rounded-lg transition-colors"
               @click="mode = 'source'; selectedSourceId = null"
             >
@@ -42,7 +42,7 @@
           </div>
 
           <!-- No classes state -->
-          <div v-if="allClasses.length === 0" class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">
+          <div v-if="allClasses.length === 0" class="text-sm text-slate-500 dark:text-zinc-400 py-4 text-center">
             <p>You don't have any classes yet.</p>
             <RouterLink to="/" class="text-indigo-600 dark:text-indigo-400 hover:underline mt-1 inline-block">
               Create one →
@@ -52,10 +52,10 @@
           <template v-else>
             <!-- Class selector -->
             <div class="mb-3">
-              <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Class</label>
+              <label class="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">Class</label>
               <select
                 v-model="selectedClassId"
-                class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 @change="onClassChange"
               >
                 <option :value="null" disabled>Select a class…</option>
@@ -73,12 +73,12 @@
 
             <!-- Source selector (only shown in source mode) -->
             <div v-if="mode === 'source' && selectedClassId" class="mb-3">
-              <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Source</label>
+              <label class="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">Source</label>
               <div v-if="loadingSources" class="text-xs text-slate-400 py-2">Loading sources…</div>
               <select
                 v-else-if="sources.length > 0"
                 v-model="selectedSourceId"
-                class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option :value="null" disabled>Select a source…</option>
                 <option v-for="src in sources" :key="src.id" :value="src.id">
@@ -96,7 +96,7 @@
           <div class="flex justify-end gap-3 mt-5">
             <button
               type="button"
-              class="text-sm font-medium px-4 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              class="text-sm font-medium px-4 py-2 rounded-lg text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
               @click="$emit('close')"
             >
               Cancel

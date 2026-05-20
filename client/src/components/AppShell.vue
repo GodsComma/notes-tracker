@@ -1,15 +1,15 @@
 <template>
-  <div class="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
+  <div class="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#141414]">
     <!-- Sidebar -->
     <aside
       v-if="!sidebarCollapsed"
-      class="w-60 shrink-0 bg-slate-800 dark:bg-slate-900 flex flex-col overflow-hidden border-r border-slate-700/50"
+      class="w-60 shrink-0 bg-[#1a1a1a] flex flex-col overflow-hidden border-r border-zinc-800/50"
     >
       <!-- Brand + collapse -->
       <div class="px-5 py-5 flex items-center justify-between">
         <span class="text-white font-bold text-lg tracking-tight">Class Notes</span>
         <button
-          class="text-slate-400 hover:text-white transition-colors"
+          class="text-zinc-400 hover:text-white transition-colors"
           title="Collapse sidebar"
           @click="toggleSidebar"
         >
@@ -28,8 +28,8 @@
           class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors"
           :class="[
             $route.path === link.to || (link.matchPrefix && $route.path.startsWith(link.matchPrefix))
-              ? 'bg-slate-700 text-white'
-              : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+              ? 'bg-zinc-800 text-white'
+              : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
           ]"
         >
           <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -47,21 +47,21 @@
               v-model="searchQ"
               type="search"
               placeholder="Search notes…"
-              class="w-full pl-8 pr-2 py-1.5 text-xs bg-slate-700/50 border border-slate-700 rounded-md text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              class="w-full pl-8 pr-2 py-1.5 text-xs bg-zinc-800/50 border border-zinc-800 rounded-md text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </div>
         </form>
       </nav>
 
       <!-- Classes section -->
-      <div class="px-4 py-3 border-t border-slate-700/50">
+      <div class="px-4 py-3 border-t border-zinc-800/50">
         <button
-          class="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-200 transition-colors"
+          class="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-zinc-400 hover:text-zinc-200 transition-colors"
           @click="semesterPickerOpen = !semesterPickerOpen"
         >
           <span class="flex items-center gap-1.5 truncate">
             CLASSES
-            <span v-if="semesterStore.activeSemester" class="font-medium normal-case tracking-normal text-slate-500 truncate">
+            <span v-if="semesterStore.activeSemester" class="font-medium normal-case tracking-normal text-zinc-500 truncate">
               · {{ semesterStore.activeSemester.name }}
             </span>
           </span>
@@ -75,13 +75,13 @@
           <select
             v-if="semesterStore.semesters.length > 0"
             :value="semesterStore.activeSemesterID"
-            class="w-full bg-slate-700/50 text-slate-200 text-xs rounded px-2 py-1.5 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            class="w-full bg-zinc-800/50 text-zinc-200 text-xs rounded px-2 py-1.5 border border-zinc-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             @change="onSemesterChange"
           >
             <option v-for="s in semesterStore.semesters" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
           <button
-            class="w-full text-xs text-indigo-300 hover:text-indigo-200 text-left px-1"
+            class="w-full text-xs text-indigo-400 hover:text-indigo-300 text-left px-1"
             @click="showNewSemester = true; semesterPickerOpen = false"
           >
             + New semester
@@ -98,8 +98,8 @@
           class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
           :class="[
             $route.path.startsWith(`/classes/${cls.id}`)
-              ? 'bg-slate-700 text-white'
-              : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+              ? 'bg-zinc-800 text-white'
+              : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
           ]"
         >
           <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ backgroundColor: cls.color }" />
@@ -108,7 +108,7 @@
 
         <button
           v-if="semesterStore.activeSemesterID"
-          class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-indigo-300 hover:bg-slate-700/40 transition-colors"
+          class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-indigo-300 hover:bg-zinc-800/40 transition-colors"
           @click="$router.push('/'); $nextTick(() => emitNewClass())"
         >
           <span class="w-2.5 h-2.5 rounded-full shrink-0 border border-dashed border-slate-500" />
@@ -117,21 +117,21 @@
       </nav>
 
       <!-- Date warning -->
-      <div v-if="semesterStore.activeSemester && !hasActiveSemesterDates" class="px-4 py-3 border-t border-slate-700/50">
+      <div v-if="semesterStore.activeSemester && !hasActiveSemesterDates" class="px-4 py-3 border-t border-zinc-800/50">
         <button
-          class="text-xs text-yellow-400 hover:text-yellow-300 text-left w-full leading-snug"
+          class="text-xs text-amber-400 hover:text-amber-300 text-left w-full leading-snug"
           @click="toggleDateEdit"
         >
           ⚠ Set semester dates so class meetings appear on the calendar.
         </button>
-        <div v-if="editingDates" class="mt-2 space-y-2 bg-slate-700/40 rounded-md p-2 border border-slate-700">
+        <div v-if="editingDates" class="mt-2 space-y-2 bg-zinc-800/40 rounded-md p-2 border border-zinc-800">
           <div>
             <label class="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Start</label>
-            <input v-model="dateForm.start" type="date" class="w-full bg-slate-800 text-slate-200 text-xs rounded px-2 py-1 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 [color-scheme:dark]" />
+            <input v-model="dateForm.start" type="date" class="w-full bg-zinc-900 text-zinc-200 text-xs rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 [color-scheme:dark]" />
           </div>
           <div>
             <label class="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">End</label>
-            <input v-model="dateForm.end" type="date" class="w-full bg-slate-800 text-slate-200 text-xs rounded px-2 py-1 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 [color-scheme:dark]" />
+            <input v-model="dateForm.end" type="date" class="w-full bg-zinc-900 text-zinc-200 text-xs rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 [color-scheme:dark]" />
           </div>
           <button
             class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium py-1.5 rounded"
@@ -147,10 +147,10 @@
     <!-- Main content -->
     <div class="flex-1 flex flex-col overflow-hidden">
       <!-- Top bar -->
-      <header class="shrink-0 h-12 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6">
+      <header class="shrink-0 h-12 bg-white dark:bg-[#141414] border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between px-6">
         <button
           v-if="sidebarCollapsed"
-          class="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+          class="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-900 transition-colors"
           title="Open sidebar"
           @click="toggleSidebar"
         >
@@ -162,9 +162,9 @@
         <div class="flex items-center gap-3">
           <ThemeToggle />
           <div v-if="authStore.user" class="flex items-center gap-2">
-            <span class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">{{ authStore.user.email }}</span>
+            <span class="text-xs text-slate-500 dark:text-zinc-500 hidden sm:block">{{ authStore.user.email }}</span>
             <button
-              class="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+              class="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-zinc-100 transition-colors px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-zinc-900"
               @click="authStore.logout()"
             >
               Sign out
@@ -183,20 +183,20 @@
     <BaseModal :open="showNewSemester" title="New Semester" @close="showNewSemester = false">
       <form class="space-y-4" @submit.prevent="createSemester">
         <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Name *</label>
           <input v-model="semForm.name" required class="input" placeholder="Fall 2026" />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Start date</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">Start date</label>
             <input v-model="semForm.startDate" type="date" class="input" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">End date</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1">End date</label>
             <input v-model="semForm.endDate" type="date" class="input" />
           </div>
         </div>
-        <p class="text-xs text-slate-500 dark:text-slate-400 -mt-2">
+        <p class="text-xs text-slate-500 dark:text-zinc-500 -mt-2">
           Required for calendar event generation.
         </p>
         <div class="flex justify-end gap-2 pt-2">

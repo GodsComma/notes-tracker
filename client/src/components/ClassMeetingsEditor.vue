@@ -4,15 +4,15 @@
       No meeting slots yet.
     </div>
 
-    <div v-else class="divide-y divide-slate-100 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+    <div v-else class="divide-y divide-slate-100 dark:divide-zinc-800 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden">
       <div
         v-for="m in meetings"
         :key="m.id"
-        class="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-slate-800 text-sm"
+        class="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-[#1e1e1e] text-sm"
       >
-        <span class="w-10 font-medium text-slate-700 dark:text-slate-300 shrink-0">{{ dayName(m.day_of_week) }}</span>
-        <span class="text-slate-600 dark:text-slate-400">{{ formatTime(m.start_time) }}–{{ formatTime(m.end_time) }}</span>
-        <span v-if="m.location" class="text-slate-400 dark:text-slate-500 truncate flex-1">{{ m.location }}</span>
+        <span class="w-10 font-medium text-slate-700 dark:text-zinc-300 shrink-0">{{ dayName(m.day_of_week) }}</span>
+        <span class="text-slate-600 dark:text-zinc-400">{{ formatTime(m.start_time) }}–{{ formatTime(m.end_time) }}</span>
+        <span v-if="m.location" class="text-slate-400 dark:text-zinc-500 truncate flex-1">{{ m.location }}</span>
         <span v-else class="flex-1" />
         <button
           class="shrink-0 text-slate-300 hover:text-red-500 transition-colors"
@@ -30,23 +30,23 @@
     <div v-if="adding" class="border border-indigo-200 dark:border-indigo-800 rounded-lg p-3 bg-indigo-50 dark:bg-indigo-950 space-y-3">
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Day</label>
+          <label class="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">Day</label>
           <select v-model="form.day_of_week" class="input text-sm">
             <option v-for="(name, i) in DAYS" :key="i" :value="i">{{ name }}</option>
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Location</label>
+          <label class="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">Location</label>
           <input v-model="form.location" class="input text-sm" placeholder="Gates B03" />
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Start time</label>
+          <label class="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">Start time</label>
           <input v-model="form.start_time" type="time" class="input text-sm" />
         </div>
         <div>
-          <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">End time</label>
+          <label class="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">End time</label>
           <input v-model="form.end_time" type="time" class="input text-sm" />
         </div>
       </div>

@@ -1,14 +1,14 @@
 <template>
   <div
     class="rounded-xl border-2 transition-colors"
-    :class="isDragging ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'"
+    :class="isDragging ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950' : 'border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#1e1e1e]'"
     @dragover.prevent="isDragging = true"
     @dragleave.prevent="isDragging = false"
     @drop.prevent="onDrop"
   >
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
-      <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-zinc-800">
+      <span class="text-sm font-semibold text-slate-700 dark:text-zinc-300">
         Files
         <span v-if="attachments.length" class="ml-1 text-xs font-normal text-slate-400">({{ attachments.length }})</span>
       </span>
@@ -30,7 +30,7 @@
       <div
         v-for="u in uploading"
         :key="u.id"
-        class="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400"
+        class="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-500 dark:text-zinc-400"
       >
         <span class="animate-spin text-base">⏳</span>
         <span class="flex-1 truncate">{{ u.name }}</span>
@@ -41,7 +41,7 @@
       <div
         v-for="a in attachments"
         :key="a.id"
-        class="flex items-center gap-3 px-4 py-2.5 group divide-y divide-slate-50 dark:divide-slate-700"
+        class="flex items-center gap-3 px-4 py-2.5 group divide-y divide-slate-50 dark:divide-zinc-800"
       >
         <span
           class="text-base shrink-0"
@@ -50,7 +50,7 @@
         >{{ fileIcon(a.mime_type) }}</span>
 
         <span
-          class="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate min-w-0"
+          class="flex-1 text-sm text-slate-700 dark:text-zinc-300 truncate min-w-0"
           :class="isPreviewable(a.mime_type) ? 'cursor-pointer hover:text-indigo-600' : ''"
           @click="isPreviewable(a.mime_type) ? (previewing = a) : null"
         >{{ a.filename }}</span>
@@ -96,7 +96,7 @@
     <!-- Empty drop zone -->
     <div
       v-else
-      class="px-4 py-8 text-center text-slate-400 dark:text-slate-500 text-sm"
+      class="px-4 py-8 text-center text-slate-400 dark:text-zinc-500 text-sm"
       @click="fileInput?.click()"
     >
       <p class="text-2xl mb-2">📎</p>

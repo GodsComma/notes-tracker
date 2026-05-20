@@ -1,11 +1,11 @@
 <template>
-  <div v-if="allSessions.length === 0" class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/50 p-8 text-center max-w-3xl">
+  <div v-if="allSessions.length === 0" class="rounded-2xl bg-white dark:bg-[#141414]/80 border border-slate-200 dark:border-zinc-800/50 p-8 text-center max-w-3xl">
     <p class="text-3xl mb-3">📖</p>
-    <p class="font-semibold text-slate-800 dark:text-slate-200">No focus sessions yet</p>
-    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Start a Deep Read session from the Library to see your stats here.</p>
+    <p class="font-semibold text-slate-800 dark:text-zinc-200">No focus sessions yet</p>
+    <p class="text-sm text-slate-500 dark:text-zinc-400 mt-1">Start a Deep Read session from the Library to see your stats here.</p>
   </div>
 
-  <div v-else class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/50 p-6 max-w-3xl space-y-5">
+  <div v-else class="rounded-2xl bg-white dark:bg-[#141414]/80 border border-slate-200 dark:border-zinc-800/50 p-6 max-w-3xl space-y-5">
     <!-- Header row -->
     <div class="flex items-center justify-between gap-4">
       <h2 class="text-slate-900 dark:text-white font-semibold text-base">Focus Stats</h2>
@@ -16,7 +16,7 @@
           class="px-3 py-1 rounded-full text-xs font-medium transition-colors"
           :class="period === p.value
             ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
-            : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+            : 'text-slate-400 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'"
           @click="period = p.value"
         >{{ p.label }}</button>
       </div>
@@ -27,22 +27,22 @@
       <div
         v-for="card in statCards"
         :key="card.label"
-        class="bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-transparent rounded-xl p-3 space-y-1 min-w-0"
+        class="bg-slate-50 dark:bg-zinc-800/40 border border-slate-100 dark:border-transparent rounded-xl p-3 space-y-1 min-w-0"
         :title="card.title ?? ''"
       >
-        <p class="text-xs text-slate-500 dark:text-slate-400 leading-tight truncate">{{ card.label }}</p>
+        <p class="text-xs text-slate-500 dark:text-zinc-400 leading-tight truncate">{{ card.label }}</p>
         <p class="text-xl font-semibold text-slate-900 dark:text-white leading-tight truncate">{{ card.value }}</p>
       </div>
     </div>
 
     <!-- Empty period message -->
-    <p v-if="filtered.length === 0 && period !== 'all'" class="text-sm text-slate-400 dark:text-slate-500 text-center py-2">
+    <p v-if="filtered.length === 0 && period !== 'all'" class="text-sm text-slate-400 dark:text-zinc-500 text-center py-2">
       No sessions in the last {{ period === '30d' ? '30' : '7' }} days.
     </p>
 
     <!-- Heatmap -->
     <div>
-      <p class="text-xs text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">Activity — past 5 months</p>
+      <p class="text-xs text-slate-400 dark:text-zinc-500 mb-2 uppercase tracking-wider">Activity — past 5 months</p>
       <div class="overflow-x-auto">
         <div class="flex gap-[3px]" style="min-width: max-content">
           <div
@@ -61,14 +61,14 @@
         </div>
       </div>
       <div class="flex items-center gap-2 mt-2">
-        <span class="text-[10px] text-slate-400 dark:text-slate-600">Less</span>
+        <span class="text-[10px] text-slate-400 dark:text-zinc-600">Less</span>
         <div v-for="c in LEGEND" :key="c" class="w-[11px] h-[11px] rounded-sm" :class="c" />
-        <span class="text-[10px] text-slate-400 dark:text-slate-600">More</span>
+        <span class="text-[10px] text-slate-400 dark:text-zinc-600">More</span>
       </div>
     </div>
 
     <!-- Fun comparison -->
-    <p class="text-xs text-slate-400 dark:text-slate-500 italic border-t border-slate-100 dark:border-slate-700/50 pt-4">{{ funLine }}</p>
+    <p class="text-xs text-slate-400 dark:text-zinc-500 italic border-t border-slate-100 dark:border-zinc-800/50 pt-4">{{ funLine }}</p>
   </div>
 </template>
 
@@ -86,7 +86,7 @@ const PERIODS: { label: string; value: Period }[] = [
 ]
 
 const LEGEND = [
-  'bg-slate-200 dark:bg-slate-700/40',
+  'bg-slate-200 dark:bg-zinc-800/40',
   'bg-indigo-200 dark:bg-indigo-900',
   'bg-indigo-400 dark:bg-indigo-600',
   'bg-indigo-600 dark:bg-indigo-400'
@@ -254,8 +254,8 @@ const heatmapWeeks = computed<HeatCell[][]>(() => {
 })
 
 function cellColor(totalSec: number): string {
-  if (totalSec < 0) return 'bg-slate-100 dark:bg-slate-800/30'          // future cell
-  if (totalSec === 0) return 'bg-slate-200 dark:bg-slate-700/40'        // no activity
+  if (totalSec < 0) return 'bg-slate-100 dark:bg-[#1e1e1e]/30'          // future cell
+  if (totalSec === 0) return 'bg-slate-200 dark:bg-zinc-800/40'        // no activity
   if (totalSec < 900) return 'bg-indigo-200 dark:bg-indigo-900'         // < 15 min
   if (totalSec < 2700) return 'bg-indigo-400 dark:bg-indigo-600'        // < 45 min
   return 'bg-indigo-600 dark:bg-indigo-400'                              // 45+ min

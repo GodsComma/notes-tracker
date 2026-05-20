@@ -4,7 +4,7 @@
     <button
       type="button"
       class="inline-flex items-center gap-1 rounded border transition-colors focus:outline-none"
-      :class="[sizeClass, priority === 0 ? 'text-slate-400 dark:text-slate-500 border-transparent hover:border-slate-300 dark:hover:border-slate-600 px-1' : chipClass]"
+      :class="[sizeClass, priority === 0 ? 'text-slate-400 dark:text-zinc-500 border-transparent hover:border-slate-300 dark:hover:border-zinc-700 px-1' : chipClass]"
       @click.stop="open = !open"
     >
       <span v-if="priority !== 0" :class="dotClass">●</span>
@@ -16,18 +16,18 @@
 
     <div
       v-if="open"
-      class="absolute z-20 mt-1 left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden min-w-[110px]"
+      class="absolute z-20 mt-1 left-0 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-zinc-800 rounded-lg shadow-lg overflow-hidden min-w-[110px]"
     >
       <button
         v-for="opt in OPTIONS"
         :key="opt.value"
         type="button"
-        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
         :class="opt.value === priority ? 'font-semibold' : ''"
         @click.stop="select(opt.value)"
       >
         <span :class="opt.dot">{{ opt.value === 0 ? '○' : '●' }}</span>
-        <span class="text-slate-700 dark:text-slate-200">{{ opt.label }}</span>
+        <span class="text-slate-700 dark:text-zinc-200">{{ opt.label }}</span>
       </button>
     </div>
   </div>
