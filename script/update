@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# script/update — Bring an existing checkout up to date after a pull/branch switch.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source script/lib/common.sh
+
+USAGE="Usage: script/update
+
+Run after git pull or switching branches. Re-runs script/bootstrap to pick
+up dependency changes. Does not pull — updating the checkout is up to you.
+Database migrations apply automatically on the next server start."
+handle_help "$@"
+[[ $# -eq 0 ]] || die "Unknown argument: $1 (see --help)"
+
+script/bootstrap
+
+step "Migrations"
+count=$(find server/db/migrations -name '*.sql' | wc -l | tr -d ' ')
+info "${count} migration files in server/db/migrations/ — pending ones apply on next server start."

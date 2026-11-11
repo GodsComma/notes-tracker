@@ -23,6 +23,7 @@
       :scale="zoom.scale"
       :enable-selection="annotationsLive"
       @select="onSelect"
+      @anchor-migrated="onAnchorMigrated"
       @anchor-click="onAnchorClick"
       @page-change="onPageChange"
       @loaded="onPdfLoaded"
@@ -202,7 +203,7 @@ import {
   saveProgress, loadProgress, effectiveZoomMode, todayISO,
   type DeepReadSettings, type ZoomMode
 } from '@/composables/useDeepRead'
-import PdfViewer, { type PdfAnchor } from './PdfViewer.vue'
+import PdfViewer, { type PdfAnchor, type PdfAnchorMigration } from './PdfViewer.vue'
 import { PDF_QUOTE_COLORS, type PdfQuoteColor } from '@/extensions/PdfQuote'
 import { api } from '@/api'
 
@@ -580,6 +581,7 @@ function collectAnchors(doc: DocNode | null): (PdfAnchor & { attachmentID: numbe
         text: String(n.attrs.text ?? ''),
         rects: (n.attrs.rects as PdfAnchor['rects']) ?? [],
         color: (n.attrs.color as PdfQuoteColor) ?? 'yellow',
+        v: n.attrs.v ? Number(n.attrs.v) : undefined,
         attachmentID: Number(n.attrs.attachmentID ?? 0)
       })
     }
@@ -600,7 +602,7 @@ function findPdfQuoteIndex(anchorId: string): number | null {
   return null
 }
 
-function onSelect(payload: { page: number; text: string; rects: PdfAnchor['rects']; color: PdfQuoteColor }) {
+function onSelect(payload: { page: number; text: string; rects: PdfAnchor['rects']; color: PdfQuoteColor; v: number }) {
   if (!annotationsLive.value || !noteDoc.value) return
   if (noteLocked.value) {
     showToast('This note is locked. Unlock to capture notes.')
@@ -615,7 +617,8 @@ function onSelect(payload: { page: number; text: string; rects: PdfAnchor['rects
       text: payload.text,
       anchorId: generateAnchorId(),
       rects: payload.rects,
-      color: payload.color
+      color: payload.color,
+      v: payload.v
     },
     content: [{ type: 'paragraph' }]
   }
@@ -624,6 +627,17 @@ function onSelect(payload: { page: number; text: string; rects: PdfAnchor['rects
   scheduleSave()
   sessionCaptureCount.value += 1
   showToast(`Note saved · ${sessionCaptureCount.value} in this session`)
+}
+
+// Legacy highlight re-anchored by the viewer: persist corrected text + rects.
+function onAnchorMigrated(m: PdfAnchorMigration) {
+  if (noteLocked.value || !noteDoc.value) return
+  const i = findPdfQuoteIndex(m.anchorId)
+  if (i === null || !noteDoc.value.content) return
+  const node = noteDoc.value.content[i]
+  node.attrs = { ...node.attrs, rects: m.rects, text: m.text, v: m.v }
+  noteDoc.value = { ...noteDoc.value }
+  scheduleSave()
 }
 
 function onAnchorClick(anchorId: string) {

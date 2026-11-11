@@ -11,6 +11,13 @@ export type PdfQuoteColor = 'yellow' | 'green' | 'blue' | 'pink'
 
 export const PDF_QUOTE_COLORS: PdfQuoteColor[] = ['yellow', 'green', 'blue', 'pink']
 
+/**
+ * Anchor format version written with every new capture. Quotes without it were
+ * captured by the pre-fix text layer (Spec/spec-pdf-text-selection.md) and are
+ * re-anchored by PdfViewer, which emits `anchor-migrated`.
+ */
+export const PDF_ANCHOR_VERSION = 2
+
 export interface PdfQuoteAttrs {
   attachmentID: number
   page: number
@@ -18,6 +25,7 @@ export interface PdfQuoteAttrs {
   anchorId: string
   rects: PdfRect[]
   color: PdfQuoteColor
+  v?: number
 }
 
 declare module '@tiptap/core' {
@@ -26,6 +34,7 @@ declare module '@tiptap/core' {
       insertPdfQuote: (attrs: PdfQuoteAttrs) => ReturnType
       setPdfQuoteColor: (anchorId: string, color: PdfQuoteColor) => ReturnType
       removePdfQuote: (anchorId: string) => ReturnType
+      updatePdfQuoteAnchor: (anchorId: string, patch: { rects: PdfRect[]; text: string; v: number }) => ReturnType
     }
   }
 }
@@ -82,6 +91,14 @@ export const PdfQuote = Node.create({
           return (PDF_QUOTE_COLORS.includes(raw as PdfQuoteColor) ? raw : 'yellow') as PdfQuoteColor
         },
         renderHTML: (attrs: Record<string, unknown>) => ({ 'data-color': String(attrs.color ?? 'yellow') })
+      },
+      v: {
+        default: null as number | null,
+        parseHTML: el => {
+          const raw = (el as HTMLElement).getAttribute('data-v')
+          return raw ? Number(raw) : null
+        },
+        renderHTML: (attrs: Record<string, unknown>) => (attrs.v ? { 'data-v': String(attrs.v) } : {})
       }
     }
   },
@@ -166,6 +183,22 @@ export const PdfQuote = Node.create({
             if (updated) return false
             if (node.type.name === 'pdfQuote' && node.attrs.anchorId === anchorId) {
               if (dispatch) tr.setNodeMarkup(pos, undefined, { ...node.attrs, color })
+              updated = true
+              return false
+            }
+            return true
+          })
+          return updated
+        },
+
+      updatePdfQuoteAnchor:
+        (anchorId: string, patch: { rects: PdfRect[]; text: string; v: number }) =>
+        ({ tr, state, dispatch }) => {
+          let updated = false
+          state.doc.descendants((node, pos) => {
+            if (updated) return false
+            if (node.type.name === 'pdfQuote' && node.attrs.anchorId === anchorId) {
+              if (dispatch) tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch })
               updated = true
               return false
             }

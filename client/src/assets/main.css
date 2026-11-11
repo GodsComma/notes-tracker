@@ -167,12 +167,12 @@
   color: inherit;
   padding: 48px 0 96px;
 }
-.dr-pdf .pdf-page-container {
+.dr-pdf .pdfViewer.removePageBorders .page {
   background: white;
   box-shadow: var(--dr-page-shadow);
   margin: 0 auto 16px;
 }
-.dr-focus[data-theme="contrast"] .dr-pdf .pdf-page-container {
+.dr-focus[data-theme="contrast"] .dr-pdf .pdfViewer .page {
   background: white; /* PDFs render against white; the surrounding canvas stays high-contrast */
 }
 
@@ -652,27 +652,23 @@
 .dr-focus[data-theme="contrast"] .pdf-highlight[data-color="pink"]   { background: rgba(244, 114, 182, 0.60); outline-color: rgba(244, 114, 182, 0.9); }
 
 /* ─── PDF viewer ────────────────────────────────────────────── */
+/* Host gets consumer classes (e.g. .dr-pdf); the scroller inside is pdf.js
+   PDFViewer's container, which must be absolutely positioned. It inherits
+   the host's padding so consumers can pad the scroll area. */
+.pdf-viewer-host {
+  @apply relative h-full overflow-hidden bg-slate-100 dark:bg-zinc-950;
+}
 .pdf-viewer {
-  @apply h-full overflow-y-auto bg-slate-100 dark:bg-zinc-950;
-}
-.pdf-page-container {
-  @apply mx-auto my-4 relative bg-white shadow;
-}
-.pdf-page-container canvas {
-  display: block;
-}
-.pdf-page-container .textLayer {
   position: absolute;
   inset: 0;
-  overflow: visible; /* was hidden — clips compressed spans making edge text unselectable */
-  opacity: 0.25;
-  line-height: 1;
-  z-index: 5; /* above highlight-layer (z-index: 4) so text spans receive pointer events first */
-  cursor: text; /* consistent text cursor over the whole layer, including inter-word gaps */
-  user-select: text;
-  -webkit-user-select: text;
+  overflow: auto;
+  padding: inherit;
 }
-.pdf-page-container .pdf-page-label {
+.pdfViewer.removePageBorders .page {
+  @apply bg-white shadow;
+  margin: 16px auto;
+}
+.pdfViewer .page .pdf-page-label {
   position: absolute;
   top: 8px;
   right: 12px;
@@ -692,30 +688,20 @@
   padding: 1px 6px;
   border-radius: 4px;
 }
-.pdf-page-container .textLayer > span,
-.pdf-page-container .textLayer > br {
-  color: transparent;
-  position: absolute;
-  white-space: pre;
-  cursor: text;
-  transform-origin: 0% 0%;
-  user-select: text;         /* explicit — prevents ancestor user-select:none from propagating */
-  -webkit-user-select: text; /* Safari */
+/* pdf.js text layer: base rules come from pdfjs-dist/web/pdf_viewer.css
+   (imported by PdfViewer.vue). Only app overrides live here — no opacity or
+   overflow hacks; see Spec/spec-pdf-text-selection.md. */
+.pdfViewer .textLayer {
+  z-index: 5; /* above .pdf-highlight-layer (4) so spans get pointer events */
 }
-.pdf-page-container .textLayer ::selection {
-  background: rgba(99, 102, 241, 1.0); /* fully opaque to compensate for parent opacity: 0.25 */
-  color: transparent; /* keep text invisible so canvas shows through */
+.pdfViewer .textLayer ::selection {
+  background: rgba(99, 102, 241, 0.3);
 }
 .pdf-viewer[data-selection-disabled] .textLayer,
-.pdf-viewer[data-selection-disabled] .textLayer > span,
-.pdf-viewer[data-selection-disabled] .textLayer > br {
+.pdf-viewer[data-selection-disabled] .textLayer :is(span, br) {
   cursor: default;
   user-select: none;
   -webkit-user-select: none;
-}
-.pdf-page-container.text-layer-building .textLayer > span,
-.pdf-page-container.text-layer-building .textLayer > br {
-  cursor: wait;
 }
 .pdf-highlight-layer {
   position: absolute;
@@ -744,20 +730,6 @@
   filter: brightness(1.1);
 }
 
-.pdf-rescaling-banner {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 23, 42, 0.75);
-  color: #f1f5f9;
-  font-size: 11px;
-  padding: 4px 12px;
-  border-radius: 9999px;
-  pointer-events: none;
-  z-index: 20;
-  white-space: nowrap;
-}
 .pdf-selection-tooltip {
   position: absolute;
   z-index: 30;

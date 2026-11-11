@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# script/setup — First-time setup, or reset the local app to a clean state.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source script/lib/common.sh
+
+USAGE="Usage: script/setup [--yes]
+
+Runs script/bootstrap, then offers to reset the local data directory
+(database + uploads). Existing data is moved to <DATA_DIR>.bak-<timestamp>,
+never deleted. Migrations apply automatically when the server starts.
+
+  --yes   Reset existing data without prompting."
+handle_help "$@"
+
+ASSUME_YES=false
+for arg in "$@"; do
+    case "$arg" in
+        --yes|-y) ASSUME_YES=true ;;
+        *) die "Unknown argument: $arg (see --help)" ;;
+    esac
+done
+
+script/bootstrap
+
+load_env
+DATA_DIR="${DATA_DIR:-data}"
+DATA_DIR="${DATA_DIR%/}"
+
+step "Local data (${DATA_DIR}/)"
+if [[ -d "$DATA_DIR" ]]; then
+    if $ASSUME_YES || confirm "Reset local database and uploads?"; then
+        backup="${DATA_DIR}.bak-$(date +%Y%m%d-%H%M%S)"
+        mv "$DATA_DIR" "$backup"
+        success "Moved existing data to ${backup}/"
+    else
+        info "Keeping existing data."
+    fi
+fi
+mkdir -p "$DATA_DIR"
+success "Data directory ready."
+
+echo ""
+echo "  Run script/server to start the app."
+echo ""

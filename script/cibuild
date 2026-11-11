@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# script/cibuild — Single entry point for CI.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source script/lib/common.sh
+
+USAGE="Usage: script/cibuild
+
+Entry point for any CI provider: bootstraps dependencies, runs the test
+suite, and verifies the linux/arm64 production build compiles."
+handle_help "$@"
+[[ $# -eq 0 ]] || die "Unknown argument: $1 (see --help)"
+
+export CI=true
+
+script/bootstrap
+script/test --fast
+
+step "Production build (linux/arm64)"
+make build
+success "CI build passed."

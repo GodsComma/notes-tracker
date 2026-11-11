@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# script/bootstrap — Install/verify all dependencies. Safe to run any time.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source script/lib/common.sh
+
+USAGE="Usage: script/bootstrap [--e2e]
+
+Verifies the toolchain (Go, Node 18+, npm, a C compiler), downloads Go
+modules, installs client npm packages when package-lock.json has changed,
+and creates .env from .env.example (with a generated JWT_SECRET) if missing.
+
+  --e2e   Also install the Playwright browsers used by script/test --e2e."
+handle_help "$@"
+
+E2E=false
+for arg in "$@"; do
+    case "$arg" in
+        --e2e) E2E=true ;;
+        *) die "Unknown argument: $arg (see --help)" ;;
+    esac
+done
+
+# ─── Toolchain ────────────────────────────────────────────────────────────────
+step "Checking toolchain"
+
+require_cmd go "Install from https://go.dev/dl/"
+# Go >= 1.21 can auto-download the toolchain declared in go.mod.
+go_minor=$(go env GOVERSION | sed -E 's/^go1\.([0-9]+).*/\1/')
+[[ "$go_minor" =~ ^[0-9]+$ && "$go_minor" -ge 21 ]] \
+    || die "Go 1.21+ required (found $(go env GOVERSION)). Install from https://go.dev/dl/"
+
+require_cmd node "Install Node.js 18+ from https://nodejs.org"
+require_cmd npm  "npm ships with Node.js — reinstall Node 18+."
+node_major=$(node -p 'process.versions.node.split(".")[0]')
+[[ "$node_major" -ge 18 ]] || die "Node 18+ required (found $(node --version))."
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    cc_hint="Run: xcode-select --install"
+else
+    cc_hint="Install gcc (e.g. sudo apt install build-essential)."
+fi
+require_cmd cc "A C compiler is required for cgo (mattn/go-sqlite3). $cc_hint"
+
+success "go $(go env GOVERSION | sed 's/^go//'), node $(node --version), cc present."
+
+# ─── Go dependencies ──────────────────────────────────────────────────────────
+step "Go modules"
+go mod download
+success "Go modules downloaded."
+
+# ─── JS dependencies ──────────────────────────────────────────────────────────
+step "Client npm packages"
+if [[ ! -d client/node_modules \
+   || ! -f client/node_modules/.package-lock.json \
+   || client/package-lock.json -nt client/node_modules/.package-lock.json ]]; then
+    info "Installing (npm ci)..."
+    (cd client && npm ci --no-audit --no-fund)
+    success "npm packages installed."
+else
+    success "npm packages up to date."
+fi
+
+# ─── .env ─────────────────────────────────────────────────────────────────────
+step "Environment"
+if [[ -f .env ]]; then
+    success ".env exists — leaving it alone."
+else
+    require_cmd openssl "Needed to generate JWT_SECRET."
+    secret=$(openssl rand -hex 32)
+    sed "s/^JWT_SECRET=.*/JWT_SECRET=${secret}/" .env.example > .env
+    chmod 600 .env
+    success "Created .env from .env.example with a generated JWT_SECRET."
+fi
+
+# ─── Playwright browsers (opt-in) ─────────────────────────────────────────────
+if $E2E; then
+    step "Playwright browsers"
+    # Idempotent: Playwright skips browsers that are already installed.
+    (cd client && npx playwright install chromium firefox)
+    success "Playwright browsers ready."
+fi

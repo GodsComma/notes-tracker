@@ -1,59 +1,67 @@
+<!--
+  PDF viewer with text selection → highlight capture.
+
+  Rendering, lazy page loading, zoom and the text layer are pdf.js's own
+  PDFViewer (pdfjs-dist/web/pdf_viewer.mjs) — the viewer Firefox ships. This
+  component adds the app layer on top: highlight overlays, selection capture,
+  legacy-anchor migration and hints. See Spec/spec-pdf-text-selection.md.
+
+  Units: `scale` is CSS px per PDF point (1 = 72 dpi). pdf.js's own "100%" is
+  96 dpi, so its currentScale = scale / PDF_TO_CSS_UNITS and --scale-factor on
+  the viewer equals `scale`. Anchor rects are PDF points, top-left origin.
+-->
 <template>
-  <div ref="root" class="pdf-viewer relative" :data-selection-disabled="!enableSelection || undefined" @scroll.passive="onScroll">
-    <div v-if="loading" class="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
-      Loading PDF…
-    </div>
-    <div v-if="error" class="absolute inset-0 flex items-center justify-center text-sm text-red-500 px-4 text-center">
-      {{ error }}
-    </div>
-
-    <!-- Zoom in progress — selection is paused during rescale -->
-    <Transition name="pdf-hint">
-      <div v-if="rescaling" class="pdf-rescaling-banner">
-        Zooming — selection paused
-      </div>
-    </Transition>
-
-    <div ref="pagesEl" class="pdf-pages" />
-
-    <!-- Cross-page hint (Fix C) — positioned near where the selection ended -->
-    <Transition name="pdf-hint">
-      <div
-        v-if="crossPageHint"
-        class="pdf-cross-page-hint"
-        :style="{ left: crossPageHint.x + 'px', top: crossPageHint.y + 'px', transform: 'translateX(-50%)' }"
-      >
-        Select within one page to highlight
-      </div>
-    </Transition>
-
-    <!-- Floating selection tooltip -->
+  <div class="pdf-viewer-host">
     <div
-      v-if="tooltip && enableSelection"
-      class="pdf-selection-tooltip"
-      :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
-      @mousedown.prevent
+      ref="root"
+      class="pdf-viewer"
+      :data-selection-disabled="!enableSelection || undefined"
     >
-      <button
-        v-for="c in PDF_QUOTE_COLORS"
-        :key="c"
-        type="button"
-        class="pdf-color-swatch"
-        :data-color="c"
-        :title="`Highlight & note (${c})`"
-        @click="commitSelection(c)"
-      />
+      <div ref="viewerEl" class="pdfViewer removePageBorders" />
+
+      <Transition name="pdf-hint">
+        <div
+          v-if="hint"
+          :class="hint.kind === 'cross-page' ? 'pdf-cross-page-hint' : 'pdf-no-text-hint'"
+          class="pdf-hint"
+          :style="{ left: hint.x + 'px', top: hint.y + 'px' }"
+        >
+          {{ hint.kind === 'cross-page'
+            ? 'Select within one page to highlight'
+            : 'This page is an image — it has no selectable text' }}
+        </div>
+      </Transition>
+
+      <div
+        v-if="tooltip && enableSelection"
+        class="pdf-selection-tooltip"
+        :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
+        @mousedown.prevent
+      >
+        <button
+          v-for="c in PDF_QUOTE_COLORS"
+          :key="c"
+          type="button"
+          class="pdf-color-swatch"
+          :data-color="c"
+          :title="`Highlight & note (${c})`"
+          @click="commitSelection(c)"
+        />
+      </div>
     </div>
+
+    <div v-if="loading" class="pdf-viewer-status text-slate-500">Loading PDF…</div>
+    <div v-if="error" class="pdf-viewer-status text-red-500 px-4 text-center">{{ error }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import * as pdfjsLib from 'pdfjs-dist'
-import { PDF_QUOTE_COLORS, type PdfQuoteColor } from '@/extensions/PdfQuote'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { pdfjsLib } from '@/lib/pdfjs'
+import { EventBus, PDFLinkService, PDFViewer } from '@/lib/pdfjsViewer'
+import 'pdfjs-dist/web/pdf_viewer.css'
+import { PDF_QUOTE_COLORS, PDF_ANCHOR_VERSION, type PdfQuoteColor } from '@/extensions/PdfQuote'
 import { acquireCachedPdf, releaseCachedPdf } from '@/composables/usePdfCache'
-
-// Worker URL is set in usePdfCache (imported above); no duplicate needed here.
 
 export interface PdfRect {
   x: number
@@ -68,6 +76,19 @@ export interface PdfAnchor {
   text: string
   rects: PdfRect[]
   color: PdfQuoteColor
+  /**
+   * Anchor format version. Missing = captured before the text-layer fix: those
+   * rects mark where the user dragged but the stored text is shifted, so they
+   * are re-anchored by geometry (see migrateLegacyAnchors).
+   */
+  v?: number
+}
+
+export interface PdfAnchorMigration {
+  anchorId: string
+  rects: PdfRect[]
+  text: string
+  v: number
 }
 
 const props = withDefaults(defineProps<{
@@ -81,493 +102,427 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  select: [payload: { page: number; text: string; rects: PdfRect[]; color: PdfQuoteColor }]
+  select: [payload: { page: number; text: string; rects: PdfRect[]; color: PdfQuoteColor; v: number }]
   'anchor-click': [anchorId: string]
+  'anchor-migrated': [payload: PdfAnchorMigration]
   'page-change': [page: number]
   loaded: [info: { numPages: number }]
 }>()
 
+const PDF_TO_CSS = pdfjsLib.PixelsPerInch.PDF_TO_CSS_UNITS
+
 const root = ref<HTMLElement | null>(null)
-const pagesEl = ref<HTMLElement | null>(null)
+const viewerEl = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const error = ref('')
+const currentPage = ref(1)
 
 const tooltip = ref<{ x: number; y: number; page: number; rects: PdfRect[]; text: string } | null>(null)
-const pageContainers = new Map<number, HTMLElement>()
+const hint = ref<{ kind: 'cross-page' | 'no-text'; x: number; y: number } | null>(null)
+let hintTimer: number | null = null
 
-// Tracks which pages have had their canvas fully rendered at least once.
-// rescale only needs to re-render these; unrendered pages will be filled in
-// by the background render loop at the new scale.
-const renderedPages = new Set<number>()
-const textLayerPages = new Set<number>() // pages whose textLayer has been fully built
-
+let viewer: PDFViewer | null = null
+let eventBus: EventBus | null = null
+let linkService: PDFLinkService | null = null
 let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
-let usingCachedDoc = false  // true if pdfDoc came from the module cache
+let docUrl: string | null = null
+let usingCachedDoc = false
+let loadEpoch = 0
 
-const renderedScale = ref(props.scale)
-const rescaling = ref(false)
-let rescaleTimer: number | null = null
+const textLayerPages = new Set<number>()   // pages whose text layer has rendered
+const noTextPages = new Set<number>()      // rendered text layer with zero spans (scanned/image page)
+const migratedAnchors = new Map<string, PdfAnchorMigration>()
+const migrationAttempted = new Set<string>()
 
-// Resolvers awaiting the current rescale to finish (for rescaleDone()).
+// rescaleDone(): resolves once the first page re-render after a scale change.
+let scalePending = false
 let rescaleResolvers: Array<() => void> = []
-
-// Epoch guard: incremented on each rescale. Background render checks against
-// the epoch it started with and stops if it's been superseded.
-let renderEpoch = 0
 
 let touchSelectionTimer: number | null = null
 let pendingTouchCapture = false
 let hoveredAnchorId: string | null = null
 let lastPointerPos = { clientX: 0, clientY: 0 }
 
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
 onMounted(() => {
-  loadPdf()
-  // Fix A: capture on pointerup (after drag ends) not on selectionchange (mid-drag).
+  if (!root.value || !viewerEl.value) return
+  eventBus = new EventBus()
+  linkService = new PDFLinkService({ eventBus })
+  viewer = new PDFViewer({
+    container: root.value as HTMLDivElement,
+    viewer: viewerEl.value as HTMLDivElement,
+    eventBus,
+    linkService,
+    textLayerMode: 1,                                // enabled
+    annotationMode: pdfjsLib.AnnotationMode.DISABLE, // app draws its own highlights
+    removePageBorders: true,
+  })
+  linkService.setViewer(viewer)
+
+  eventBus.on('pagesinit', onPagesInit)
+  eventBus.on('pagerendered', onPageRendered)
+  eventBus.on('textlayerrendered', onTextLayerRendered)
+  eventBus.on('pagechanging', (e: { pageNumber: number }) => {
+    if (e.pageNumber !== currentPage.value) {
+      currentPage.value = e.pageNumber
+      emit('page-change', e.pageNumber)
+    }
+  })
+  eventBus.on('scalechanging', () => { tooltip.value = null })
+
   document.addEventListener('pointerup', onDocPointerUp)
   document.addEventListener('pointerdown', onDocPointerDown)
+  document.addEventListener('pointermove', onDocPointerMove)
+  document.addEventListener('mousedown', onDocMouseDown, true)
   document.addEventListener('mousemove', onDocMouseMove)
-  // selectionchange is kept only to clear the tooltip when selection collapses.
-  document.addEventListener('selectionchange', onSelectionChangeRaw)
-})
-watch(() => props.url, () => loadPdf())
-watch(() => props.scale, (next) => {
-  // Fix D: block selection capture immediately when scale changes.
-  // scheduleRescale() also sets this, but doing it here closes the
-  // ~300ms window where the CSS transform is live but rescaling is still false.
-  rescaling.value = true
-  // Phase 1 — instant CSS-scale preview at zero cost.
-  const ratio = next / renderedScale.value
-  for (const container of pageContainers.values()) {
-    container.style.transformOrigin = 'top center'
-    container.style.transform = `scale(${ratio})`
-  }
-  // Phase 2 — debounced real re-render at the new scale.
-  scheduleRescale()
-})
-watch(() => props.anchors, () => renderAllHighlights(), { deep: true })
+  document.addEventListener('selectionchange', onSelectionChange)
 
-const currentPage = ref(1)
-function onScroll() {
-  if (!root.value) return
-  const top = root.value.scrollTop
-  let active = 1
-  for (const [p, el] of pageContainers) {
-    if (el.offsetTop - 80 <= top) active = p
-    else break
-  }
-  if (active !== currentPage.value) {
-    currentPage.value = active
-    emit('page-change', active)
-  }
-}
+  loadPdf()
+})
 
 onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', onDocMouseDown, true)
   document.removeEventListener('pointerup', onDocPointerUp)
   document.removeEventListener('pointerdown', onDocPointerDown)
+  document.removeEventListener('pointermove', onDocPointerMove)
+  document.removeEventListener('mousedown', onDocMouseDown, true)
   document.removeEventListener('mousemove', onDocMouseMove)
-  document.removeEventListener('selectionchange', onSelectionChangeRaw)
-  if (rescaleTimer) clearTimeout(rescaleTimer)
-  if (crossPageHintTimer) clearTimeout(crossPageHintTimer)
+  document.removeEventListener('selectionchange', onSelectionChange)
+  if (hintTimer) clearTimeout(hintTimer)
   if (touchSelectionTimer) clearTimeout(touchSelectionTimer)
-  // Return the cached doc instead of destroying it — the cache manages its
-  // own lifecycle. Destroy only if we fetched it ourselves.
-  if (pdfDoc) {
-    if (usingCachedDoc) {
-      releaseCachedPdf(props.url)
-    } else {
-      pdfDoc.destroy()
-    }
-    pdfDoc = null
-  }
+  flushRescaleResolvers()
+  releaseDoc()
+  viewer = null
 })
 
-// --- Loading ---
+watch(() => props.url, () => loadPdf())
+
+watch(() => props.scale, (s) => {
+  if (!viewer?.pdfDocument) return
+  const next = s / PDF_TO_CSS
+  if (Math.abs(viewer.currentScale - next) < 1e-6) return
+  tooltip.value = null
+  scalePending = true
+  viewer.currentScale = next
+  // Safety net: never leave rescaleDone() waiters hanging.
+  window.setTimeout(() => { if (scalePending) { scalePending = false; flushRescaleResolvers() } }, 3000)
+})
+
+watch(() => props.anchors, () => {
+  for (const p of textLayerPages) migrateLegacyAnchors(p)
+  renderAllHighlights()
+}, { deep: true })
+
+// ─── Loading ──────────────────────────────────────────────────────────────────
+
+function releaseDoc() {
+  viewer?.setDocument(null as unknown as pdfjsLib.PDFDocumentProxy)
+  linkService?.setDocument(null)
+  if (pdfDoc && docUrl) {
+    if (usingCachedDoc) releaseCachedPdf(docUrl)
+    else pdfDoc.loadingTask.destroy()
+  }
+  pdfDoc = null
+  docUrl = null
+}
 
 async function loadPdf() {
-  if (!props.url || !pagesEl.value) return
+  if (!props.url || !viewer) return
+  const epoch = ++loadEpoch
   loading.value = true
   error.value = ''
-  renderedPages.clear()
+  tooltip.value = null
   textLayerPages.clear()
-  pageContainers.clear()
-  pagesEl.value.innerHTML = ''
-  renderEpoch++
-  const myEpoch = renderEpoch
+  noTextPages.clear()
+  migratedAnchors.clear()
+  migrationAttempted.clear()
+  releaseDoc()
 
   try {
-    // Try module-level cache first (warmed by SourceView.preloadPdf).
-    const cached = acquireCachedPdf(props.url)
-    if (cached) {
-      pdfDoc = cached
-      usingCachedDoc = true
-    } else {
-      usingCachedDoc = false
-      pdfDoc = await pdfjsLib.getDocument({ url: props.url }).promise
+    const url = props.url
+    const cached = acquireCachedPdf(url)
+    const doc = cached ?? await pdfjsLib.getDocument({ url }).promise
+    if (epoch !== loadEpoch) {
+      if (cached) releaseCachedPdf(url); else doc.loadingTask.destroy()
+      return
     }
-    if (myEpoch !== renderEpoch) return  // URL changed while loading
-
-    const numPages = pdfDoc.numPages
-
-    // --- Step 1: Create placeholder containers for every page ---
-    // We do this upfront so that scrollToPage(p) works for any page immediately,
-    // even before that page has been canvas-rendered. We size them all using
-    // page 1's dimensions; individual dimensions are corrected when rendered.
-    const page1 = await pdfDoc.getPage(1)
-    const vp1 = page1.getViewport({ scale: props.scale })
-    for (let p = 1; p <= numPages; p++) {
-      createPageContainer(p, vp1.width, vp1.height)
-    }
-    if (myEpoch !== renderEpoch) return
-
-    // --- Step 2: Render pages 1–2 immediately, then emit loaded ---
-    // These are the only pages the user sees on open. Everything else is
-    // background-rendered so the splash can disappear within ~1s.
-    await runPageRender(1, { withTextLayer: true })
-    if (numPages >= 2) await runPageRender(2, { withTextLayer: true })
-    if (myEpoch !== renderEpoch) return
-
-    renderAllHighlights()
-    document.addEventListener('mousedown', onDocMouseDown, true)
-    loading.value = false
-    emit('loaded', { numPages })
-
-    // --- Step 3: Background-render remaining pages ---
-    scheduleBackgroundRender(3, myEpoch)
-
+    pdfDoc = doc
+    docUrl = url
+    usingCachedDoc = !!cached
+    viewer.setDocument(doc)
+    linkService?.setDocument(doc, null)
   } catch (e: unknown) {
+    if (epoch !== loadEpoch) return
     error.value = e instanceof Error ? e.message : 'Failed to load PDF'
     loading.value = false
   }
 }
 
-function createPageContainer(pageNum: number, width: number, height: number) {
-  if (!pagesEl.value) return
-  const container = document.createElement('div')
-  container.className = 'pdf-page-container'
-  container.dataset.pageNumber = String(pageNum)
-  container.style.width = width + 'px'
-  container.style.height = height + 'px'
-
-  const canvas = document.createElement('canvas')
-  container.appendChild(canvas)
-
-  const textLayerDiv = document.createElement('div')
-  textLayerDiv.className = 'textLayer'
-  container.appendChild(textLayerDiv)
-
-  const highlightDiv = document.createElement('div')
-  highlightDiv.className = 'pdf-highlight-layer'
-  container.appendChild(highlightDiv)
-
-  const label = document.createElement('span')
-  label.className = 'pdf-page-label'
-  label.textContent = `${pageNum} / ${pdfDoc?.numPages ?? '?'}`
-  container.appendChild(label)
-
-  pagesEl.value.appendChild(container)
-  pageContainers.set(pageNum, container)
+function onPagesInit() {
+  if (!viewer || !pdfDoc) return
+  viewer.currentScale = props.scale / PDF_TO_CSS
+  loading.value = false
+  emit('loaded', { numPages: pdfDoc.numPages })
 }
 
-// Per-page render tasks so we can cancel mid-flight on rapid zoom.
-const renderTasks = new Map<number, { cancel: () => void }>()
+// ─── Page decorations (highlight layer + label) ───────────────────────────────
 
-async function runPageRender(pageNum: number, { withTextLayer = false } = {}) {
-  if (!pdfDoc) return
-  const container = pageContainers.get(pageNum)
-  if (!container) return
+function pageView(pageNum: number) {
+  return viewer?.getPageView(pageNum - 1) as
+    | { div: HTMLDivElement; viewport: { width: number; height: number; scale: number }; textLayer?: { div: HTMLDivElement } | null }
+    | undefined
+}
 
-  const prev = renderTasks.get(pageNum)
-  if (prev) {
-    try { prev.cancel() } catch { /* ignore */ }
-    renderTasks.delete(pageNum)
+/** CSS px per PDF point for a page, measured from its rendered box. */
+function pxPerUnit(pageNum: number, pageRect: DOMRect): number {
+  const vp = pageView(pageNum)?.viewport
+  // viewport.scale already includes PDF_TO_CSS, so width / scale = width in points.
+  const w1 = vp ? vp.width / vp.scale : 0
+  return w1 ? pageRect.width / w1 : props.scale
+}
+
+/** pdf.js removes unknown children when it re-renders a page, so re-add ours. */
+function decoratePage(pageNum: number) {
+  const pv = pageView(pageNum)
+  if (!pv || !pdfDoc) return
+  const div = pv.div
+  if (!div.querySelector(':scope > .pdf-highlight-layer')) {
+    const layer = document.createElement('div')
+    layer.className = 'pdf-highlight-layer'
+    div.appendChild(layer)
   }
-
-  const page = await pdfDoc.getPage(pageNum)
-  const viewport = page.getViewport({ scale: props.scale })
-
-  container.style.width = viewport.width + 'px'
-  container.style.height = viewport.height + 'px'
-
-  const canvas = container.querySelector('canvas') as HTMLCanvasElement | null
-  if (!canvas) return
-  canvas.width = viewport.width
-  canvas.height = viewport.height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  const task = page.render({ canvasContext: ctx, viewport, canvas } as unknown as Parameters<typeof page.render>[0])
-  renderTasks.set(pageNum, task)
-  try {
-    await task.promise
-  } catch (e: unknown) {
-    if ((e as { name?: string })?.name === 'RenderingCancelledException') return
-    throw e
-  } finally {
-    if (renderTasks.get(pageNum) === task) renderTasks.delete(pageNum)
+  if (!div.querySelector(':scope > .pdf-page-label')) {
+    const label = document.createElement('span')
+    label.className = 'pdf-page-label'
+    label.textContent = `${pageNum} / ${pdfDoc.numPages}`
+    div.appendChild(label)
   }
+  renderHighlights(pageNum)
+}
 
-  renderedPages.add(pageNum)
-
-  // Text layer — rendered immediately for visible pages, deferred (withTextLayer=false)
-  // for background-rendered pages to avoid blocking the render loop.
-  if (withTextLayer) {
-    await buildTextLayer(page, viewport, container)
+function onPageRendered(e: { pageNumber: number }) {
+  decoratePage(e.pageNumber)
+  if (scalePending) {
+    scalePending = false
+    flushRescaleResolvers()
   }
 }
 
-async function buildTextLayer(
-  page: pdfjsLib.PDFPageProxy,
-  viewport: pdfjsLib.PageViewport,
-  container: HTMLElement
-) {
-  const textLayerDiv = container.querySelector('.textLayer') as HTMLElement | null
-  if (!textLayerDiv) return
-  textLayerDiv.innerHTML = ''
-  textLayerDiv.style.width = viewport.width + 'px'
-  textLayerDiv.style.height = viewport.height + 'px'
-  container.classList.add('text-layer-building')
-  try {
-    const textContent = await page.getTextContent()
-    const TextLayerCtor = (pdfjsLib as unknown as {
-      TextLayer?: new (opts: unknown) => { render: () => Promise<void> }
-    }).TextLayer
-    if (!TextLayerCtor) {
-      console.error('[PdfViewer] pdfjsLib.TextLayer not found — text selection unavailable. Check pdfjs-dist version.')
-      return
+function onTextLayerRendered(e: { pageNumber: number }) {
+  const pv = pageView(e.pageNumber)
+  const tl = pv?.textLayer?.div
+  if (!tl) return
+  textLayerPages.add(e.pageNumber)
+  if (tl.querySelector('span:not(.markedContent)')) noTextPages.delete(e.pageNumber)
+  else noTextPages.add(e.pageNumber)
+  migrateLegacyAnchors(e.pageNumber)
+}
+
+function flushRescaleResolvers() {
+  const rs = rescaleResolvers.splice(0)
+  for (const r of rs) r()
+}
+
+// ─── Highlights ───────────────────────────────────────────────────────────────
+
+/** Rects to draw for an anchor: migrated ones for legacy anchors when available. */
+function anchorRects(a: PdfAnchor): PdfRect[] {
+  if (!a.v) return migratedAnchors.get(a.anchorId)?.rects ?? a.rects
+  return a.rects
+}
+
+function renderHighlights(pageNum: number) {
+  const layer = pageView(pageNum)?.div.querySelector(':scope > .pdf-highlight-layer')
+  if (!layer) return
+  layer.replaceChildren()
+  for (const a of props.anchors) {
+    if (a.page !== pageNum) continue
+    for (const r of anchorRects(a)) {
+      const el = document.createElement('div')
+      el.className = 'pdf-highlight'
+      // Page units × the viewer's --scale-factor (= props.scale): highlights
+      // follow every zoom without being recomputed.
+      el.style.left = `calc(var(--scale-factor) * ${r.x}px)`
+      el.style.top = `calc(var(--scale-factor) * ${r.y}px)`
+      el.style.width = `calc(var(--scale-factor) * ${r.w}px)`
+      el.style.height = `calc(var(--scale-factor) * ${r.h}px)`
+      el.dataset.anchorId = a.anchorId
+      el.dataset.color = a.color ?? 'yellow'
+      layer.appendChild(el)
     }
-    const tl = new TextLayerCtor({ textContentSource: textContent, container: textLayerDiv, viewport })
-    await tl.render()
-    attachSnapHandler(textLayerDiv)
-    const pageNum = Number(container.dataset.pageNumber ?? 0)
-    if (pageNum) textLayerPages.add(pageNum)
-  } catch { /* text layer is best-effort */ } finally {
-    container.classList.remove('text-layer-building')
   }
 }
-
-// Background render: yields to the browser between batches so the UI stays
-// responsive. Pages rendered here get withTextLayer=false; text layers are
-// added lazily via IntersectionObserver when the page scrolls into view.
-const BATCH_SIZE = 4
-
-function scheduleBackgroundRender(startPage: number, epoch: number) {
-  if (!pdfDoc || startPage > pdfDoc.numPages) return
-  const end = Math.min(startPage + BATCH_SIZE - 1, pdfDoc.numPages)
-  const run = async () => {
-    for (let p = startPage; p <= end; p++) {
-      if (epoch !== renderEpoch || !pdfDoc) return  // superseded by zoom or URL change
-      try { await runPageRender(p, { withTextLayer: false }) } catch { /* ignore */ }
-    }
-    scheduleBackgroundRender(end + 1, epoch)
-  }
-  if ('requestIdleCallback' in window) {
-    requestIdleCallback(run, { timeout: 5000 })
-  } else {
-    setTimeout(run, 0)
-  }
-}
-
-// IntersectionObserver: when a page enters the viewport, build its text layer
-// if it hasn't been built yet (i.e. was background-rendered without one).
-let textLayerObserver: IntersectionObserver | null = null
-
-function setupTextLayerObserver() {
-  if (!root.value || textLayerObserver) return
-  textLayerObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting || !pdfDoc) continue
-        const container = entry.target as HTMLElement
-        const pageNum = Number(container.dataset.pageNumber ?? 0)
-        if (!pageNum || !renderedPages.has(pageNum)) continue
-        const textLayerDiv = container.querySelector('.textLayer') as HTMLElement | null
-        // Only build if empty (background render left it blank) and not already in progress.
-        if (!textLayerDiv || textLayerDiv.childElementCount > 0) continue
-        if (container.classList.contains('text-layer-building')) continue
-        pdfDoc.getPage(pageNum).then(page => {
-          const vp = page.getViewport({ scale: props.scale })
-          buildTextLayer(page, vp, container)
-        }).catch(() => { /* best effort */ })
-      }
-    },
-    { root: root.value, rootMargin: '400px 0px' }
-  )
-  for (const container of pageContainers.values()) {
-    textLayerObserver.observe(container)
-  }
-}
-
-// --- Rescale ---
-
-// When set, the next rescale scrolls here instead of currentPage.
-let pendingRestorePage: number | null = null
-function setRestorePage(p: number) { pendingRestorePage = p }
-
-async function rerenderAllPagesAtCurrentScale() {
-  if (!pdfDoc || !root.value || renderedPages.size === 0) return
-  const myEpoch = ++renderEpoch
-  const anchorPage = pendingRestorePage ?? currentPage.value
-  pendingRestorePage = null
-
-  // Cancel in-flight tasks before re-rendering.
-  for (const t of renderTasks.values()) {
-    try { t.cancel() } catch { /* ignore */ }
-  }
-  renderTasks.clear()
-
-  // Only re-render pages that have already been canvas-rendered. Unrendered
-  // placeholders will be filled in correctly by the restarted background loop.
-  for (const pageNum of [...renderedPages].sort((a, b) => a - b)) {
-    if (myEpoch !== renderEpoch) return
-    try { await runPageRender(pageNum, { withTextLayer: true }) } catch { /* swallow */ }
-  }
-  if (myEpoch !== renderEpoch) return
-
-  renderAllHighlights()
-  scrollToPage(anchorPage)
-
-  // Flush rescaleDone() waiters.
-  const resolvers = rescaleResolvers.splice(0)
-  for (const resolve of resolvers) resolve()
-
-  // Restart background render for pages that haven't been rendered yet.
-  scheduleBackgroundRender(firstUnrenderedPage(), myEpoch)
-}
-
-function firstUnrenderedPage(): number {
-  if (!pdfDoc) return Infinity
-  for (let p = 1; p <= pdfDoc.numPages; p++) {
-    if (!renderedPages.has(p)) return p
-  }
-  return Infinity
-}
-
-function scheduleRescale() {
-  tooltip.value = null
-  rescaling.value = true
-  if (rescaleTimer) clearTimeout(rescaleTimer)
-  rescaleTimer = window.setTimeout(async () => {
-    rescaleTimer = null
-    for (const container of pageContainers.values()) {
-      container.style.transform = ''
-    }
-    await rerenderAllPagesAtCurrentScale()
-    renderedScale.value = props.scale
-    rescaling.value = false
-  }, 300)
-}
-
-/**
- * Returns a Promise that resolves once the current rescale debounce + re-render
- * cycle completes. If no rescale is pending, resolves immediately.
- * Use this instead of hard-coded timeouts when waiting for zoom to settle.
- */
-function rescaleDone(): Promise<void> {
-  if (!rescaleTimer && !rescaling.value) return Promise.resolve()
-  return new Promise<void>(resolve => { rescaleResolvers.push(resolve) })
-}
-
-async function getPageWidthAtScale1(): Promise<number> {
-  if (!pdfDoc) return 0
-  const page = await pdfDoc.getPage(1)
-  return page.getViewport({ scale: 1 }).width
-}
-
-async function getPageHeightAtScale1(): Promise<number> {
-  if (!pdfDoc) return 0
-  const page = await pdfDoc.getPage(1)
-  return page.getViewport({ scale: 1 }).height
-}
-
-// --- Highlights ---
 
 function renderAllHighlights() {
-  for (const [pageNum, container] of pageContainers) {
-    if (!renderedPages.has(pageNum)) continue
-    const layer = container.querySelector('.pdf-highlight-layer') as HTMLElement | null
-    if (!layer) continue
-    layer.innerHTML = ''
-    const onPage = props.anchors.filter(a => a.page === pageNum)
-    for (const a of onPage) {
-      for (const r of a.rects) {
-        const el = document.createElement('div')
-        el.className = 'pdf-highlight'
-        el.style.left = r.x * props.scale + 'px'
-        el.style.top = r.y * props.scale + 'px'
-        el.style.width = r.w * props.scale + 'px'
-        el.style.height = r.h * props.scale + 'px'
-        el.dataset.anchorId = a.anchorId
-        el.dataset.color = a.color ?? 'yellow'
-        layer.appendChild(el)
-      }
+  if (!pdfDoc) return
+  const pages = new Set(props.anchors.map(a => a.page))
+  // Clear layers on pages that no longer have anchors.
+  viewerEl.value?.querySelectorAll('.page').forEach(div => {
+    const n = Number((div as HTMLElement).dataset.pageNumber)
+    if (n && !pages.has(n)) div.querySelector(':scope > .pdf-highlight-layer')?.replaceChildren()
+  })
+  for (const p of pages) if (p >= 1 && p <= pdfDoc.numPages) renderHighlights(p)
+}
+
+/** Anchor under a client point, if any (geometry-based; highlights don't take events). */
+function anchorAt(clientX: number, clientY: number): string | null {
+  for (const pageNum of new Set(props.anchors.map(a => a.page))) {
+    const div = pageView(pageNum)?.div
+    if (!div) continue
+    const pr = div.getBoundingClientRect()
+    if (clientX < pr.left || clientX > pr.right || clientY < pr.top || clientY > pr.bottom) continue
+    const k = pxPerUnit(pageNum, pr)
+    const x = (clientX - pr.left) / k, y = (clientY - pr.top) / k
+    for (const a of props.anchors) {
+      if (a.page !== pageNum) continue
+      if (anchorRects(a).some(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)) return a.anchorId
     }
-  }
-}
-
-// --- Selection capture ---
-
-function onDocMouseDown(e: MouseEvent) {
-  const target = e.target as HTMLElement | null
-  if (target?.closest('.pdf-selection-tooltip')) return
-  tooltip.value = null
-}
-
-function findPageContainer(node: Node | null): HTMLElement | null {
-  let n: Node | null = node
-  while (n) {
-    if (n instanceof HTMLElement && n.classList.contains('pdf-page-container')) return n
-    n = n.parentNode
   }
   return null
 }
 
-// Fix B: merge per-span rects from PDF.js TextLayer into one rect per visual
-// line. PDF.js positions each text span with a CSS matrix transform, so
-// getClientRects() returns one rect per span — 40–120 for a paragraph. Merging
-// by vertical proximity reduces that to 3–5 line-level rects, eliminates
-// subpixel gaps between adjacent spans, and cuts stored data dramatically.
-//
-// Both thresholds are now scale-aware:
-// - LINE_TOLERANCE grows with scale so same-line subscripts/superscripts stay merged
-//   at high zoom (where their vertical offsets are proportionally larger in CSS px).
-// - HORIZ_GAP grows with scale so inter-word gaps (which are proportionally larger
-//   at high zoom) still merge into full-line rects instead of per-word rects.
-function mergeRects(raw: DOMRect[], scale: number): DOMRect[] {
-  if (raw.length <= 1) return raw
-  const dpr = window.devicePixelRatio ?? 1
-  const LINE_TOLERANCE = Math.max(2, (4 / dpr) * Math.max(1, scale))  // scale-and-DPI-aware
-  const HORIZ_GAP      = Math.round(8 * Math.max(1, scale))            // proportional to zoom
-  const sorted = [...raw].sort((a, b) => a.top - b.top || a.left - b.left)
-  const merged: DOMRect[] = []
-  let cur = sorted[0]
-  for (let i = 1; i < sorted.length; i++) {
-    const r = sorted[i]
-    const sameTop  = Math.abs(r.top - cur.top) <= LINE_TOLERANCE
-    const adjacent = r.left <= cur.right + HORIZ_GAP
-    if (sameTop && adjacent) {
-      const right  = Math.max(cur.right,  r.right)
-      const bottom = Math.max(cur.bottom, r.bottom)
-      cur = new DOMRect(cur.left, cur.top, right - cur.left, bottom - cur.top)
-    } else {
-      merged.push(cur)
-      cur = r
-    }
+// ─── Geometry ─────────────────────────────────────────────────────────────────
+
+/**
+ * Merge a range's client rects into one rect per visual line, in page units.
+ * Thresholds are relative to line height, so they hold at any zoom and font
+ * size: rects share a line when they overlap vertically by at least half the
+ * smaller height, and join when the gap is under one line height (word gaps
+ * between text items merge; column gutters don't).
+ */
+function mergeLineRects(rects: PdfRect[]): PdfRect[] {
+  if (rects.length <= 1) return rects
+  const sorted = [...rects].sort((a, b) => a.y - b.y || a.x - b.x)
+  const lines: PdfRect[][] = []
+  for (const r of sorted) {
+    const line = lines.find(l => {
+      const ref = l[0]
+      const overlap = Math.min(ref.y + ref.h, r.y + r.h) - Math.max(ref.y, r.y)
+      return overlap >= 0.5 * Math.min(ref.h, r.h)
+    })
+    if (line) line.push(r)
+    else lines.push([r])
   }
-  merged.push(cur)
-  return merged
+  const out: PdfRect[] = []
+  for (const l of lines) {
+    l.sort((a, b) => a.x - b.x)
+    let cur = { ...l[0] }
+    for (let i = 1; i < l.length; i++) {
+      const r = l[i]
+      if (r.x <= cur.x + cur.w + Math.max(cur.h, r.h)) {
+        const right = Math.max(cur.x + cur.w, r.x + r.w)
+        const top = Math.min(cur.y, r.y)
+        const bottom = Math.max(cur.y + cur.h, r.y + r.h)
+        cur = { x: cur.x, y: top, w: right - cur.x, h: bottom - top }
+      } else {
+        out.push(cur)
+        cur = { ...r }
+      }
+    }
+    out.push(cur)
+  }
+  return out.sort((a, b) => a.y - b.y || a.x - b.x)
 }
 
-// Fix A: selectionchange now only clears the tooltip when the user clicks
-// away and collapses the selection. Actual rect capture happens in captureSelection
-// which is triggered by pointerup — after the drag has fully ended.
-// For touch/pen: reset debounce timer while selection handles are still moving.
-function onSelectionChangeRaw() {
+/** Page-unit line rects for a Range that lies within one page. */
+function rectsFromRange(range: Range, pageEl: HTMLElement, pageNum: number): PdfRect[] {
+  const pr = pageEl.getBoundingClientRect()
+  const k = pxPerUnit(pageNum, pr)
+  const raw = Array.from(range.getClientRects())
+    .filter(r => r.width > 1 && r.height > 1)
+    .map(r => ({ x: (r.left - pr.left) / k, y: (r.top - pr.top) / k, w: r.width / k, h: r.height / k }))
+  return mergeLineRects(raw)
+}
+
+function pageOf(node: Node | null): HTMLElement | null {
+  const el = node instanceof Element ? node : node?.parentElement
+  const page = el?.closest('.page[data-page-number]') as HTMLElement | null
+  return page && viewerEl.value?.contains(page) ? page : null
+}
+
+// ─── Legacy anchor migration ──────────────────────────────────────────────────
+
+/**
+ * Re-anchor highlights captured before the text-layer fix (no `v`).
+ *
+ * Their stored *text* is wrong (the misaligned layer shifted it by a
+ * zoom-dependent amount) but their *rects* mark where the user dragged. So we
+ * take the characters of the now-correct text layer under those rects and
+ * rebuild text + rects from them. A character counts when its vertical centre
+ * is inside a rect and at least 30% of its width overlaps it.
+ */
+function migrateLegacyAnchors(pageNum: number) {
+  const legacy = props.anchors.filter(a => a.page === pageNum && !a.v && !migrationAttempted.has(a.anchorId))
+  if (!legacy.length) return
+  const pv = pageView(pageNum)
+  const textLayer = pv?.textLayer?.div
+  if (!pv || !textLayer) return
+  const pr = pv.div.getBoundingClientRect()
+  const k = pxPerUnit(pageNum, pr)
+
+  const nodes: { node: Text; box: PdfRect }[] = []
+  const walker = document.createTreeWalker(textLayer, NodeFilter.SHOW_TEXT)
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const el = n.parentElement
+    if (!el || !n.textContent) continue
+    const r = el.getBoundingClientRect()
+    nodes.push({ node: n as Text, box: { x: (r.left - pr.left) / k, y: (r.top - pr.top) / k, w: r.width / k, h: r.height / k } })
+  }
+  const probe = document.createRange()
+  const intersects = (a: PdfRect, b: PdfRect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+
+  for (const a of legacy) {
+    migrationAttempted.add(a.anchorId)
+    let first: { node: Text; i: number } | null = null
+    let last: { node: Text; i: number } | null = null
+    for (const { node, box } of nodes) {
+      if (!a.rects.some(r => intersects(r, box))) continue
+      for (let i = 0; i < node.length; i++) {
+        probe.setStart(node, i); probe.setEnd(node, i + 1)
+        const cr = probe.getBoundingClientRect()
+        if (cr.width <= 0) continue
+        const cx0 = (cr.left - pr.left) / k, cw = cr.width / k
+        const cy = (cr.top + cr.height / 2 - pr.top) / k
+        const hit = a.rects.some(r => {
+          if (cy < r.y || cy > r.y + r.h) return false
+          return Math.min(cx0 + cw, r.x + r.w) - Math.max(cx0, r.x) >= 0.3 * cw
+        })
+        if (!hit) continue
+        if (!first) first = { node, i }
+        last = { node, i }
+      }
+    }
+    if (!first || !last) {
+      console.warn(`[PdfViewer] could not re-anchor legacy highlight ${a.anchorId}; keeping stored rects`)
+      continue
+    }
+    const range = document.createRange()
+    range.setStart(first.node, first.i)
+    range.setEnd(last.node, last.i + 1)
+    const text = range.toString().replace(/\s+/g, ' ').trim()
+    const rects = rectsFromRange(range, pv.div, pageNum)
+    if (!text || !rects.length) continue
+    const m: PdfAnchorMigration = { anchorId: a.anchorId, rects, text, v: PDF_ANCHOR_VERSION }
+    migratedAnchors.set(a.anchorId, m)
+    emit('anchor-migrated', m)
+  }
+  renderHighlights(pageNum)
+}
+
+// ─── Selection capture ────────────────────────────────────────────────────────
+
+function onDocMouseDown(e: MouseEvent) {
+  if ((e.target as HTMLElement | null)?.closest('.pdf-selection-tooltip')) return
+  tooltip.value = null
+}
+
+function onSelectionChange() {
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed) {
     tooltip.value = null
     return
   }
+  // Touch/pen: selection handles keep moving after pointerup; capture once they settle.
   if (pendingTouchCapture) {
     if (touchSelectionTimer) clearTimeout(touchSelectionTimer)
     touchSelectionTimer = window.setTimeout(() => {
@@ -578,41 +533,34 @@ function onSelectionChangeRaw() {
   }
 }
 
-// Fix A: pointerup fires exactly once when the mouse button is released.
-// Mouse: use requestAnimationFrame so the browser has flushed the final selection
-// state (fixes RC-4 scroll race). Also detects anchor clicks on collapsed selections.
-// Touch/pen: selection state isn't committed at pointerup time on iOS/Android;
-// debounce via selectionchange until handles stop moving.
+function onDocPointerDown(e: PointerEvent) {
+  if (e.pointerType !== 'mouse') {
+    if (touchSelectionTimer) { clearTimeout(touchSelectionTimer); touchSelectionTimer = null }
+    pendingTouchCapture = false
+  }
+  // Scanned / image-only page: explain why nothing will select.
+  if (props.enableSelection) {
+    const page = pageOf(e.target as Node)
+    const n = Number(page?.dataset.pageNumber ?? 0)
+    if (n && noTextPages.has(n)) showHint('no-text', e.clientX, e.clientY)
+  }
+}
+
+function onDocPointerMove(e: PointerEvent) {
+  if (e.pointerType === 'mouse' && e.buttons & 1) snapFocusToLineEdge(e.clientX, e.clientY)
+}
+
 function onDocPointerUp(e: PointerEvent) {
   const { clientX, clientY } = e
   lastPointerPos = { clientX, clientY }
   if (e.pointerType === 'mouse') {
-    if (e.button !== 0) return  // ignore non-left
-    // Geometry-based anchor-click: fires only on a plain click (collapsed selection).
-    // Drag-to-select leaves a non-collapsed selection, so we skip anchor detection.
-    const sel = window.getSelection()
-    if (sel?.isCollapsed && root.value && props.anchors.length) {
-      for (const [pageNum, container] of pageContainers) {
-        const pageRect = container.getBoundingClientRect()
-        if (clientX < pageRect.left || clientX > pageRect.right ||
-            clientY < pageRect.top  || clientY > pageRect.bottom) continue
-        const relX = (clientX - pageRect.left) / props.scale
-        const relY = (clientY - pageRect.top)  / props.scale
-        let hit = false
-        for (const anchor of props.anchors) {
-          if (anchor.page !== pageNum) continue
-          for (const r of anchor.rects) {
-            if (relX >= r.x && relX <= r.x + r.w && relY >= r.y && relY <= r.y + r.h) {
-              emit('anchor-click', anchor.anchorId)
-              hit = true
-              break
-            }
-          }
-          if (hit) break
-        }
-        if (hit) break
-      }
+    if (e.button !== 0) return
+    // Plain click (collapsed selection) on a highlight → anchor-click.
+    if (window.getSelection()?.isCollapsed && props.anchors.length) {
+      const id = anchorAt(clientX, clientY)
+      if (id) emit('anchor-click', id)
     }
+    snapFocusToLineEdge(clientX, clientY)
     window.requestAnimationFrame(() => captureSelection(clientX, clientY))
   } else {
     pendingTouchCapture = true
@@ -625,248 +573,139 @@ function onDocPointerUp(e: PointerEvent) {
   }
 }
 
-function onDocPointerDown(e: PointerEvent) {
-  if (e.pointerType !== 'mouse') {
-    if (touchSelectionTimer) {
-      clearTimeout(touchSelectionTimer)
-      touchSelectionTimer = null
-    }
-    pendingTouchCapture = false
-  }
-}
-
 function onDocMouseMove(e: MouseEvent) {
-  if (!root.value || !props.anchors.length) return
-  let found: string | null = null
-  for (const [pageNum, container] of pageContainers) {
-    const pageRect = container.getBoundingClientRect()
-    if (e.clientX < pageRect.left || e.clientX > pageRect.right ||
-        e.clientY < pageRect.top  || e.clientY > pageRect.bottom) continue
-    const relX = (e.clientX - pageRect.left) / props.scale
-    const relY = (e.clientY - pageRect.top)  / props.scale
-    for (const anchor of props.anchors) {
-      if (anchor.page !== pageNum) continue
-      for (const r of anchor.rects) {
-        if (relX >= r.x && relX <= r.x + r.w && relY >= r.y && relY <= r.y + r.h) {
-          found = anchor.anchorId
-          break
-        }
-      }
-      if (found) break
-    }
-    if (found) break
-  }
+  if (!props.anchors.length) return
+  const found = anchorAt(e.clientX, e.clientY)
   if (found === hoveredAnchorId) return
-  if (hoveredAnchorId) {
-    const page = props.anchors.find(a => a.anchorId === hoveredAnchorId)?.page ?? -1
-    pageContainers.get(page)
-      ?.querySelectorAll(`[data-anchor-id="${CSS.escape(hoveredAnchorId)}"]`)
-      .forEach(el => el.classList.remove('pdf-highlight-hover'))
+  const toggle = (id: string, on: boolean) => {
+    viewerEl.value?.querySelectorAll(`.pdf-highlight[data-anchor-id="${CSS.escape(id)}"]`)
+      .forEach(el => el.classList.toggle('pdf-highlight-hover', on))
   }
+  if (hoveredAnchorId) toggle(hoveredAnchorId, false)
   hoveredAnchorId = found
-  if (found) {
-    const page = props.anchors.find(a => a.anchorId === found)?.page ?? -1
-    pageContainers.get(page)
-      ?.querySelectorAll(`[data-anchor-id="${CSS.escape(found)}"]`)
-      .forEach(el => el.classList.add('pdf-highlight-hover'))
-  }
+  if (found) toggle(found, true)
 }
 
-// Cross-browser helper: find the text caret position nearest to (clientX, clientY).
-// Returns a collapsed Range or null if neither API is available or no text was found.
-function caretAtPoint(clientX: number, clientY: number): Range | null {
-  if (typeof document.caretRangeFromPoint === 'function') {
-    // Chrome, Safari, Edge
-    return document.caretRangeFromPoint(clientX, clientY)
-  }
-  // Firefox
-  const pos = (document as unknown as {
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
-  }).caretPositionFromPoint?.(clientX, clientY)
-  if (!pos) return null
-  const r = document.createRange()
-  r.setStart(pos.offsetNode, pos.offset)
-  r.collapse(true)
-  return r
-}
-
-// Attaches a mousedown handler to a textLayer div that snaps gap clicks to the
-// nearest character. Called after every buildTextLayer so rescales get a fresh
-// handler without stacking.
-//
-// When a click lands on the textLayer div background (an inter-word or inter-line
-// gap — no span at that position), the browser creates a collapsed selection at
-// the div's empty flow content, effectively selecting nothing. This handler
-// intercepts those gap clicks, uses caretRangeFromPoint to snap the anchor to the
-// nearest character, then extends the selection on drag via Selection.extend().
-// Without preventDefault the browser continues the drag from the snapped anchor.
-function attachSnapHandler(textLayerDiv: HTMLElement) {
-  // Reuse the stored reference so repeated calls don't stack listeners.
-  const prev = (textLayerDiv as HTMLElement & { _snapHandler?: EventListener })._snapHandler
-  if (prev) textLayerDiv.removeEventListener('mousedown', prev)
-
-  const handler = (e: MouseEvent) => {
-    // Only fire when the click target is the textLayer div itself (the background),
-    // not when it's a child <span> or <br> — those have native selection already.
-    if (e.target !== textLayerDiv) return
-
-    const range = caretAtPoint(e.clientX, e.clientY)
-    if (!range || !textLayerDiv.contains(range.startContainer)) return
-
-    const sel = window.getSelection()
-    if (!sel) return
-    sel.removeAllRanges()
-    sel.addRange(range)
-    // Do NOT preventDefault — the browser must receive the mousedown to track
-    // the drag start position from our snapped anchor.
-
-    // Extend the selection on drag so moving through gaps also snaps correctly.
-    const onDragMove = (ev: MouseEvent) => {
-      if (!(ev.buttons & 1)) return  // bail if left button released
-      const end = caretAtPoint(ev.clientX, ev.clientY)
-      if (!end || !textLayerDiv.contains(end.startContainer)) return
-      try {
-        sel.extend(end.startContainer, end.startOffset)
-      } catch { /* extend can throw across disconnected nodes — safe to ignore */ }
+/**
+ * Line-edge snap. Browsers don't extend a selection while the pointer is over
+ * empty space (the margin past a line end, or before its start), so a fast
+ * drag past the end of a line leaves the last few characters unselected —
+ * whatever the last pointer sample over text happened to be. When the pointer
+ * is beside the span holding the selection's focus (same line, past its edge),
+ * move the focus to that edge.
+ */
+function snapFocusToLineEdge(clientX: number, clientY: number) {
+  if (!props.enableSelection) return
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || !sel.focusNode) return
+  const focusEl = sel.focusNode.nodeType === Node.TEXT_NODE ? sel.focusNode.parentElement : sel.focusNode as Element
+  const span = focusEl?.closest('.textLayer span') as HTMLElement | null
+  if (!span || !viewerEl.value?.contains(span)) return
+  const text = Array.from(span.childNodes).find((n): n is Text => n.nodeType === Node.TEXT_NODE)
+  if (!text) return
+  const r = span.getBoundingClientRect()
+  if (clientY < r.top || clientY > r.bottom) return
+  try {
+    if (clientX > r.right && !(sel.focusNode === text && sel.focusOffset === text.length)) {
+      sel.extend(text, text.length)
+    } else if (clientX < r.left && !(sel.focusNode === text && sel.focusOffset === 0)) {
+      sel.extend(text, 0)
     }
-    const onDragEnd = () => {
-      document.removeEventListener('mousemove', onDragMove)
-      document.removeEventListener('mouseup', onDragEnd)
-    }
-    document.addEventListener('mousemove', onDragMove)
-    document.addEventListener('mouseup', onDragEnd)
-  }
-
-  ;(textLayerDiv as HTMLElement & { _snapHandler?: EventListener })._snapHandler = handler as EventListener
-  textLayerDiv.addEventListener('mousedown', handler)
+  } catch { /* extend() can throw on detached nodes — safe to ignore */ }
 }
 
 function captureSelection(clientX = 0, clientY = 0) {
-  if (!props.enableSelection || rescaling.value || !root.value) return
-
+  if (!props.enableSelection || !root.value) return
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
   const range = sel.getRangeAt(0)
+  if (root.value.querySelector('.pdf-selection-tooltip')?.contains(range.commonAncestorContainer)) return
 
-  // Fix G: ignore selections inside the tooltip itself.
-  const tooltipEl = root.value.querySelector('.pdf-selection-tooltip')
-  if (tooltipEl?.contains(range.commonAncestorContainer)) return
-
-  // Fix C: identify which page each selection boundary is on. Reject if they
-  // differ — cross-page rects are relative to the wrong pageRect and produce
-  // wildly wrong coordinates.
-  const startPage = findPageContainer(range.startContainer)
-  const endPage   = findPageContainer(range.endContainer)
+  const startPage = pageOf(range.startContainer)
+  const endPage = pageOf(range.endContainer)
   if (!startPage) return
   if (endPage && endPage !== startPage) {
-    // Brief visual feedback so the user knows why nothing happened.
-    showCrossPageHint(clientX, clientY)
+    showHint('cross-page', clientX, clientY)
     return
   }
-  const pageEl  = startPage
-  const pageNum = Number(pageEl.dataset.pageNumber ?? 0)
+  const pageNum = Number(startPage.dataset.pageNumber ?? 0)
   if (!pageNum) return
 
-  // Fix B: all three reads happen in the same RAF frame — no scroll race.
-  const rootRect  = root.value.getBoundingClientRect()
-  const pageRect  = pageEl.getBoundingClientRect()
-  const rawRects  = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1)
-  if (rawRects.length === 0) return
-
-  const lineRects = mergeRects(rawRects, props.scale)
-
-  const rects: PdfRect[] = lineRects.map(r => ({
-    x: (r.left - pageRect.left) / props.scale,
-    y: (r.top  - pageRect.top)  / props.scale,
-    w: r.width  / props.scale,
-    h: r.height / props.scale
-  }))
-
-  // Fix F: use range.toString() scoped to the range, then normalise whitespace.
+  const rootRect = root.value.getBoundingClientRect()
+  const pr = startPage.getBoundingClientRect()
+  const k = pxPerUnit(pageNum, pr)
+  const rects = rectsFromRange(range, startPage, pageNum)
+  if (!rects.length) return
   const text = range.toString().replace(/\s+/g, ' ').trim()
   if (!text) return
 
-  const first = lineRects[0]
-  // Offset the tooltip above the first line. At high zoom the line height grows
-  // proportionally, so a fixed 32px can overlap the selection highlight. Use
-  // the actual line height + 8px clearance, floored at 32px for small text.
-  const tooltipOffset = Math.max(32, first.height + 8)
+  const first = rects[0]
+  const offset = Math.max(32, first.h * k + 8)
   tooltip.value = {
-    x: first.left - rootRect.left + root.value.scrollLeft,
-    y: first.top  - rootRect.top  + root.value.scrollTop - tooltipOffset,
+    x: pr.left + first.x * k - rootRect.left + root.value.scrollLeft,
+    y: pr.top + first.y * k - rootRect.top + root.value.scrollTop - offset,
     page: pageNum,
     rects,
     text
   }
 }
 
-// Hint shown when selection spans two pages — positioned near the cursor.
-let crossPageHintTimer: number | null = null
-const crossPageHint = ref<{ x: number; y: number } | null>(null)
-function showCrossPageHint(clientX: number, clientY: number) {
+function showHint(kind: 'cross-page' | 'no-text', clientX: number, clientY: number) {
   if (!root.value) return
-  const rootRect = root.value.getBoundingClientRect()
-  crossPageHint.value = {
-    x: clientX - rootRect.left + root.value.scrollLeft,
-    y: clientY - rootRect.top  + root.value.scrollTop - 40
-  }
-  if (crossPageHintTimer) clearTimeout(crossPageHintTimer)
-  crossPageHintTimer = window.setTimeout(() => { crossPageHint.value = null }, 2000)
+  const rr = root.value.getBoundingClientRect()
+  hint.value = { kind, x: clientX - rr.left + root.value.scrollLeft, y: clientY - rr.top + root.value.scrollTop - 40 }
+  if (hintTimer) clearTimeout(hintTimer)
+  hintTimer = window.setTimeout(() => { hint.value = null }, 2500)
 }
 
 function commitSelection(color: PdfQuoteColor) {
   if (!tooltip.value) return
   const { page, rects, text } = tooltip.value
-  if (text) emit('select', { page, text, rects, color })
+  if (text) emit('select', { page, text, rects, color, v: PDF_ANCHOR_VERSION })
   tooltip.value = null
   window.getSelection()?.removeAllRanges()
 }
 
-// --- External API ---
+// ─── External API ─────────────────────────────────────────────────────────────
+
+function scrollToPage(p: number) {
+  if (!viewer?.pdfDocument || p < 1 || p > viewer.pagesCount) return
+  viewer.scrollPageIntoView({ pageNumber: p })
+}
 
 function scrollToAnchor(anchorId: string) {
   const anchor = props.anchors.find(a => a.anchorId === anchorId)
-  if (!anchor) return
-  const container = pageContainers.get(anchor.page)
-  if (!container || !root.value) return
-
-  const pageRect = container.getBoundingClientRect()
-  const rootRect = root.value.getBoundingClientRect()
-  const offsetTop = pageRect.top - rootRect.top + root.value.scrollTop
-  const targetTop = offsetTop + (anchor.rects[0]?.y ?? 0) * props.scale - 80
-  root.value.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
-
-  nextTick(() => {
-    const els = container.querySelectorAll(`[data-anchor-id="${CSS.escape(anchorId)}"]`)
-    els.forEach(el => {
+  const div = anchor && pageView(anchor.page)?.div
+  if (!anchor || !div || !root.value) return
+  const pr = div.getBoundingClientRect()
+  const rr = root.value.getBoundingClientRect()
+  const y = anchorRects(anchor)[0]?.y ?? 0
+  const top = pr.top - rr.top + root.value.scrollTop + y * pxPerUnit(anchor.page, pr) - 80
+  root.value.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  window.setTimeout(() => {
+    div.querySelectorAll(`.pdf-highlight[data-anchor-id="${CSS.escape(anchorId)}"]`).forEach(el => {
       el.classList.add('pdf-highlight-active')
       window.setTimeout(() => el.classList.remove('pdf-highlight-active'), 1500)
     })
-  })
+  }, 50)
 }
 
-function scrollToPage(p: number) {
-  const container = pageContainers.get(p)
-  if (!container || !root.value) return
-  const rootRect = root.value.getBoundingClientRect()
-  const pageRect = container.getBoundingClientRect()
-  const targetTop = pageRect.top - rootRect.top + root.value.scrollTop - 24
-  root.value.scrollTop = Math.max(0, targetTop)
+/** Kept for API compatibility: PDFViewer preserves the reading position across zoom. */
+function setRestorePage(_p: number) { /* no-op */ }
 
-  // Eagerly build text layer if the page is canvas-rendered but has no text layer yet.
-  // Fire-and-forget — selection becomes available as soon as the async build completes.
-  if (pdfDoc && renderedPages.has(p) && !textLayerPages.has(p)) {
-    pdfDoc.getPage(p).then(page => {
-      const vp = page.getViewport({ scale: props.scale })
-      buildTextLayer(page, vp, container)
-    }).catch(() => { /* best effort */ })
-  }
+/** Resolves after the next page render following a scale change (immediately if none pending). */
+function rescaleDone(): Promise<void> {
+  if (!scalePending) return Promise.resolve()
+  return new Promise<void>(resolve => { rescaleResolvers.push(resolve) })
 }
 
-// Wire up the IntersectionObserver once loadPdf puts containers in the DOM.
-watch(() => loading.value, (isLoading) => {
-  if (!isLoading) nextTick(setupTextLayerObserver)
-})
+async function pageSizeAtScale1(): Promise<{ w: number; h: number }> {
+  if (!pdfDoc) return { w: 0, h: 0 }
+  const vp = (await pdfDoc.getPage(1)).getViewport({ scale: 1 })
+  return { w: vp.width, h: vp.height }
+}
+async function getPageWidthAtScale1() { return (await pageSizeAtScale1()).w }
+async function getPageHeightAtScale1() { return (await pageSizeAtScale1()).h }
 
 defineExpose({
   scrollToAnchor,
@@ -880,13 +719,18 @@ defineExpose({
 </script>
 
 <style scoped>
-.pdf-pages {
-  padding-bottom: 1rem;
+.pdf-viewer-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
 }
 
-.pdf-cross-page-hint {
+.pdf-hint {
   position: absolute;
-  /* left/top/transform set by :style binding — positioned near cursor */
+  transform: translateX(-50%);
   background: rgba(15, 23, 42, 0.85);
   color: #f1f5f9;
   font-size: 12px;

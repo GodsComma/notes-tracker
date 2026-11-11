@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# script/console — Open a SQLite console on the app database.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source script/lib/common.sh
+
+USAGE="Usage: script/console [production [--write]]
+
+  (no args)            sqlite3 on the local \$DATA_DIR/notes.db
+  production           sqlite3 on the deploy host's DB over SSH, READ-ONLY.
+                       Uses DEPLOY_USER, DEPLOY_HOST, DEPLOY_APP_DIR from .env.
+  production --write   Same, but writable (asks for confirmation)."
+handle_help "$@"
+
+TARGET=local
+WRITE=false
+for arg in "$@"; do
+    case "$arg" in
+        production) TARGET=production ;;
+        --write)    WRITE=true ;;
+        *) die "Unknown argument: $arg (see --help)" ;;
+    esac
+done
+[[ "$TARGET" == production ]] || ! $WRITE || die "--write only applies to 'production'."
+
+load_env
+
+if [[ "$TARGET" == local ]]; then
+    require_cmd sqlite3 "Install sqlite3 (macOS ships it; Debian: sudo apt install sqlite3)."
+    db="${DATA_DIR:-data}/notes.db"
+    [[ -f "$db" ]] || die "No database at ${db}. Run script/server once to create it."
+    exec sqlite3 "$db"
+fi
+
+[[ -n "${DEPLOY_USER:-}" && -n "${DEPLOY_HOST:-}" ]] \
+    || die "Set DEPLOY_USER and DEPLOY_HOST in .env (see .env.example)."
+app_dir="${DEPLOY_APP_DIR:-/opt/notes/app}"
+remote_db="${app_dir}/data/notes.db"
+
+readonly_flag="-readonly"
+if $WRITE; then
+    warn "Opening the PRODUCTION database in WRITE mode."
+    confirm "Continue?" || die "Aborted."
+    readonly_flag=""
+fi
+
+info "Connecting to ${DEPLOY_USER}@${DEPLOY_HOST} (${remote_db})..."
+exec ssh -t "${DEPLOY_USER}@${DEPLOY_HOST}" "sudo -u notes sqlite3 ${readonly_flag} '${remote_db}'"

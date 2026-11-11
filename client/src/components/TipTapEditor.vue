@@ -116,7 +116,12 @@ function scrollToAnchor(anchorId: string) {
   window.setTimeout(() => el.classList.remove('pdf-quote-pulse'), 1500)
 }
 
-defineExpose({ insertPdfQuote, scrollToAnchor })
+/** Persist a re-anchored legacy highlight (PdfViewer `anchor-migrated`). */
+function updatePdfQuoteAnchor(anchorId: string, patch: { rects: PdfQuoteAttrs['rects']; text: string; v: number }) {
+  editor.value?.commands.updatePdfQuoteAnchor(anchorId, patch)
+}
+
+defineExpose({ insertPdfQuote, scrollToAnchor, updatePdfQuoteAnchor })
 </script>
 
 <style scoped>

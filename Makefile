@@ -1,18 +1,25 @@
-.PHONY: all dev build dist run clean help
+.PHONY: all dev test build build-native dist run clean help
 
 BIN  := bin/notes-server
 DIST := dist
+
+# Build used by `dist`: `build` (linux/arm64) or `build-native` (this machine).
+#   make dist BUILD_TARGET=build-native
+BUILD_TARGET ?= build
 
 # Default target
 all: build
 
 # ─── Development ─────────────────────────────────────────────────────────────
+# Workflow targets delegate to script/ (see "Scripts to Rule Them All").
 
-# Start both servers. Ctrl-C kills both cleanly.
+# Go backend + Vite dev server. Ctrl-C kills both cleanly.
 dev:
-	@trap 'kill 0' EXIT; \
-	  go run -tags fts5 ./server & \
-	  cd client && npm run dev
+	@script/server
+
+# go vet, go test, client type-check.
+test:
+	@script/test
 
 # ─── Production build ────────────────────────────────────────────────────────
 
@@ -43,8 +50,8 @@ build-native:
 #   ├── server/db/migrations/   ← SQL migrations (read on startup)
 #   └── data/                   ← runtime DB + uploads (created automatically)
 #
-# Deploy:  scp -r dist/ user@host:/opt/notes && ssh user@host 'cd /opt/notes && ./notes-server'
-dist: build
+# Deploy:  script/deploy
+dist: $(BUILD_TARGET)
 	@rm -rf $(DIST)
 	@mkdir -p $(DIST)/client $(DIST)/server/db $(DIST)/data
 	cp $(BIN) $(DIST)/notes-server
@@ -69,11 +76,12 @@ clean:
 # ─── Help ────────────────────────────────────────────────────────────────────
 
 help:
-	@printf "\nUsage: make <target>\n\n"
-	@printf "  %-8s  %s\n" "dev"   "Go backend + Vite dev server (hot reload)"
-	@printf "  %-14s  %s\n" "build" "Production build → client/dist/ + bin/notes-server (linux/arm64)"
+	@printf "\nUsage: make <target>   (or use script/* directly)\n\n"
+	@printf "  %-14s  %s\n" "dev"          "Go backend + Vite dev server (script/server)"
+	@printf "  %-14s  %s\n" "test"         "go vet, go test, client type-check (script/test)"
+	@printf "  %-14s  %s\n" "build"        "Production build → client/dist/ + bin/notes-server (linux/arm64)"
 	@printf "  %-14s  %s\n" "build-native" "Same build for the current machine's OS/arch"
-	@printf "  %-8s  %s\n" "dist"  "Self-contained deployable bundle in dist/"
-	@printf "  %-8s  %s\n" "run"   "Build then start the production server"
-	@printf "  %-8s  %s\n" "clean" "Remove bin/, client/dist/, dist/"
+	@printf "  %-14s  %s\n" "dist"         "Self-contained deployable bundle in dist/ (BUILD_TARGET=build|build-native)"
+	@printf "  %-14s  %s\n" "run"          "Build then start the production server"
+	@printf "  %-14s  %s\n" "clean"        "Remove bin/, client/dist/, dist/"
 	@printf "\n"

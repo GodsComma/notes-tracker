@@ -6,10 +6,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import * as pdfjsLib from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { pdfjsLib } from '@/lib/pdfjs'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 const props = defineProps<{ url: string }>()
 

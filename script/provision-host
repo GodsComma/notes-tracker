@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# setup-host.sh — Run once on the deploy host to prepare it for the notes-tracker app.
-# Must be run as root (sudo ./setup-host.sh).
+# script/provision-host — Run once on the deploy host to prepare it for the notes-tracker app.
+# Must be run as root (sudo ./provision-host).
+# Self-contained on purpose: it is copied to the host on its own.
 #
 # What it does:
 #   1. Creates a 'notes' system user
@@ -12,8 +13,8 @@
 #   7. Sets up a daily backup cron job
 #
 # Usage:
-#   scp scripts/setup-host.sh user@host:~/setup-host.sh
-#   ssh user@host 'chmod +x ~/setup-host.sh && sudo ~/setup-host.sh'
+#   scp script/provision-host user@host:~/provision-host
+#   ssh -t user@host 'chmod +x ~/provision-host && sudo ~/provision-host'
 
 set -euo pipefail
 
@@ -226,11 +227,11 @@ echo "  Certificate:    ${CERT_FILE}"
 echo "  Backups:        ${BACKUPS_DIR}"
 echo ""
 echo -e "  ${YELLOW}Next steps:${NC}"
-echo "  1. On your build machine, edit scripts/deploy.sh:"
-echo "       REMOTE_USER=\"${DEPLOY_USER}\""
-echo "       REMOTE_HOST=\"${SERVER_IP}\""
+echo "  1. On your build machine, set these in .env:"
+echo "       DEPLOY_USER=${DEPLOY_USER}"
+echo "       DEPLOY_HOST=${SERVER_IP}"
 echo ""
-echo "  2. Run: ./scripts/deploy.sh"
+echo "  2. Run: script/deploy"
 echo ""
 echo "  3. Copy the certificate to each client device:"
 echo "       scp ${DEPLOY_USER}@${SERVER_IP}:${CERT_FILE} ~/notes-cert.pem"

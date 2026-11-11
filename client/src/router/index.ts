@@ -17,6 +17,10 @@ export default createRouter({
     { path: '/deepread', redirect: '/library' },
     { path: '/classes/:id', component: ClassView, meta: { requiresAuth: true } },
     { path: '/sources/:id', component: SourceView, meta: { requiresAuth: true } },
-    { path: '/search', component: SearchView, meta: { requiresAuth: true } }
+    { path: '/search', component: SearchView, meta: { requiresAuth: true } },
+    // Dev-only Playwright harness (client/e2e). Tree-shaken from production builds.
+    ...(import.meta.env.DEV
+      ? [{ path: '/__e2e/pdf-viewer', component: () => import('@/views/__e2e/PdfViewerHarness.vue') }]
+      : [])
   ]
 })

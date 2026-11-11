@@ -5,10 +5,7 @@
  * Lifecycle: each consumer calls acquireCachedPdf / releaseCachedPdf.
  * When the ref-count drops to zero the document is destroyed and evicted.
  */
-import * as pdfjsLib from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
+import { pdfjsLib } from '@/lib/pdfjs'
 
 interface CacheEntry {
   doc: pdfjsLib.PDFDocumentProxy
@@ -46,7 +43,7 @@ export function releaseCachedPdf(url: string): void {
   if (!entry) return
   entry.refs--
   if (entry.refs <= 0) {
-    entry.doc.destroy()
+    entry.doc.loadingTask.destroy()
     cache.delete(url)
   }
 }

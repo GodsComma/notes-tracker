@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# script/server — Run the app.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source script/lib/common.sh
+
+USAGE="Usage: script/server [--prod]
+
+Runs script/update, loads .env, then starts the app.
+
+  (default)  Go API on :\${PORT:-3001} + Vite dev server on :5173 with hot
+             reload. Ctrl-C stops both.
+  --prod     Build the production binary for this machine (make build-native)
+             and run it from the repo root."
+handle_help "$@"
+
+MODE=dev
+for arg in "$@"; do
+    case "$arg" in
+        --prod) MODE=prod ;;
+        *) die "Unknown argument: $arg (see --help)" ;;
+    esac
+done
+
+script/update
+
+load_env
+[[ -n "${JWT_SECRET:-}" ]] || die "JWT_SECRET is not set. Run script/setup (or set it in .env)."
+
+if [[ "$MODE" == prod ]]; then
+    step "Building production binary (native)"
+    make build-native
+    step "Starting bin/notes-server"
+    exec ./bin/notes-server
+fi
+
+step "Starting dev servers (Ctrl-C to stop)"
+info "App: http://localhost:5173   API: http://localhost:${PORT:-3001}"
+# Kill the whole process group (go run's child binary, vite) on Ctrl-C,
+# SIGTERM, or if either server exits. Clear the traps first so `kill 0`
+# (which also signals this script) doesn't re-enter the handler.
+cleanup() { trap - INT TERM EXIT; kill 0 2>/dev/null || true; }
+trap cleanup INT TERM EXIT
+go run -tags fts5 ./server &
+(cd client && npm run dev) &
+wait

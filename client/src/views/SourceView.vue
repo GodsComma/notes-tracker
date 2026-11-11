@@ -145,6 +145,7 @@
           :anchors="anchorsForActivePdf"
           @select="onPdfSelect"
           @anchor-click="onPdfAnchorClick"
+          @anchor-migrated="onPdfAnchorMigrated"
         />
       </div>
 
@@ -221,7 +222,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type Source, type Class, type Attachment } from '@/api'
-import type { PdfAnchor, PdfRect } from '@/components/PdfViewer.vue'
+import type { PdfAnchor, PdfAnchorMigration, PdfRect } from '@/components/PdfViewer.vue'
 import type { PdfQuoteColor } from '@/extensions/PdfQuote'
 import { preloadPdf } from '@/composables/usePdfCache'
 import { useEditorStore } from '@/stores/editor'
@@ -331,6 +332,7 @@ function collectAnchors(doc: unknown): (PdfAnchor & { attachmentID: number })[] 
         text: String(node.attrs.text ?? ''),
         rects: (node.attrs.rects as PdfRect[] | undefined) ?? [],
         color: (node.attrs.color as PdfQuoteColor | undefined) ?? 'yellow',
+        v: node.attrs.v ? Number(node.attrs.v) : undefined,
         attachmentID: Number(node.attrs.attachmentID ?? 0)
       })
     }
@@ -415,7 +417,7 @@ async function onAttachmentsChange() {
   }
 }
 
-function onPdfSelect(payload: { page: number; text: string; rects: PdfRect[]; color: PdfQuoteColor }) {
+function onPdfSelect(payload: { page: number; text: string; rects: PdfRect[]; color: PdfQuoteColor; v: number }) {
   if (!activePdfId.value || !editorRef.value) return
   if (editorStore.locked) return // lock gate — no new captures
   editorRef.value.insertPdfQuote({
@@ -424,8 +426,16 @@ function onPdfSelect(payload: { page: number; text: string; rects: PdfRect[]; co
     text: payload.text,
     anchorId: generateAnchorId(),
     rects: payload.rects,
-    color: payload.color
+    color: payload.color,
+    v: payload.v
   })
+}
+
+// Legacy highlight re-anchored by the viewer: persist the corrected text and
+// rects. Locked notes are left untouched (the viewer still draws the fix).
+function onPdfAnchorMigrated(m: PdfAnchorMigration) {
+  if (editorStore.locked) return
+  editorRef.value?.updatePdfQuoteAnchor(m.anchorId, { rects: m.rects, text: m.text, v: m.v })
 }
 
 function onPdfAnchorClick(anchorId: string) {

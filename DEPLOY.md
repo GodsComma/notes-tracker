@@ -8,7 +8,8 @@
 ## Prerequisites
 
 **On your build machine:**
-- Go 1.22+ (`go version`)
+- Go 1.21+ (`go version`); the `go 1.25` toolchain declared in `go.mod` is fetched automatically
+- A C compiler (macOS: `xcode-select --install`) — required by the SQLite driver
 - Node.js 18+ and npm (`node --version`)
 - `rsync` and `ssh`
 
@@ -26,18 +27,18 @@ There are two scripts:
 
 | Script | Runs on | When |
 |---|---|---|
-| `scripts/setup-host.sh` | **Deploy host** | Once, before the first deploy |
-| `scripts/deploy.sh` | **Build machine** | Every deploy (initial and updates) |
+| `script/provision-host` | **Deploy host** | Once, before the first deploy |
+| `script/deploy` | **Build machine** | Every deploy (initial and updates) |
 
 The sequence for a first deployment is:
 
 ```
-1. SSH into the host → run setup-host.sh
-2. On your build machine → run deploy.sh
+1. SSH into the host → run provision-host
+2. On your build machine → run script/deploy
 3. On each client device → trust the certificate
 ```
 
-Updates after that are just `./scripts/deploy.sh`.
+Updates after that are just `script/deploy`.
 
 ---
 
@@ -48,8 +49,8 @@ SSH into your deploy host, then copy and run the setup script.
 **Transfer the script to the host:**
 
 ```bash
-scp scripts/setup-host.sh user@192.168.1.X:~/setup-host.sh
-ssh user@192.168.1.X 'chmod +x ~/setup-host.sh && sudo ~/setup-host.sh'
+scp script/provision-host user@192.168.1.X:~/provision-host
+ssh -t user@192.168.1.X 'chmod +x ~/provision-host && sudo ~/provision-host'
 ```
 
 The script will prompt you for:
@@ -71,27 +72,28 @@ It will then:
 
 ## Step 2 — Build and Deploy (run from your build machine)
 
-**Configure the script** — open `scripts/deploy.sh` and set the three variables at the top:
+**Configure the target** — set these in `.env` at the repo root (`script/bootstrap` creates it from `.env.example`; it is gitignored):
 
 ```bash
-REMOTE_USER="pi"           # Your SSH login on the host
-REMOTE_HOST="192.168.1.X"  # Host IP or hostname
-REMOTE_APP_DIR="/opt/notes/app"
+DEPLOY_USER=pi                 # Your SSH login on the host
+DEPLOY_HOST=192.168.1.X        # Host IP or hostname
+DEPLOY_APP_DIR=/opt/notes/app  # Default; must match APP_DIR in provision-host
 ```
 
 **Run:**
 
 ```bash
-./scripts/deploy.sh
+script/deploy
 ```
 
 This will:
-1. Build the Vue frontend (`npm run build`)
-2. Cross-compile the Go binary for Linux ARM64
-3. Bundle everything into `dist/`
-4. `rsync` the bundle to the host
-5. Restart the `notes` service via SSH
-6. Print the service status
+1. Install/verify dependencies (`script/bootstrap`)
+2. Build the Vue frontend (`npm run build`)
+3. Cross-compile the Go binary for Linux ARM64
+4. Bundle everything into `dist/`
+5. `rsync` the bundle to the host
+6. Restart the `notes` service via SSH
+7. Print the service status
 
 The app is now running at `https://<your-hostname>`.
 
@@ -142,10 +144,19 @@ sudo update-ca-certificates
 After any code change, just run the deploy script again from your build machine:
 
 ```bash
-./scripts/deploy.sh
+script/deploy
 ```
 
 Database migrations run automatically on startup — new migration files are applied and already-applied ones are skipped. No manual DB work needed.
+
+---
+
+## Database Console
+
+```bash
+script/console production          # read-only sqlite3 on the host's DB
+script/console production --write  # writable (asks for confirmation)
+```
 
 ---
 
@@ -165,7 +176,7 @@ ssh user@192.168.1.X 'journalctl -u notes -n 100 --no-pager'
 
 ## Backup
 
-Persistent state lives entirely in `/opt/notes/app/data/`. A daily cron job is set up by `setup-host.sh` that tarballs this directory to `/opt/notes/backups/` and prunes backups older than 30 days.
+Persistent state lives entirely in `/opt/notes/app/data/`. A daily cron job is set up by `provision-host` that tarballs this directory to `/opt/notes/backups/` and prunes backups older than 30 days.
 
 To restore from a backup:
 
@@ -185,7 +196,7 @@ Self-signed certificates don't auto-renew. The setup script generates a 10-year 
 ssh user@192.168.1.X 'sudo /opt/notes/renew-cert.sh'
 ```
 
-`setup-host.sh` installs this renewal script automatically. After renewal you'll need to re-trust the new certificate on each device (Step 3 again).
+`provision-host` installs this renewal script automatically. After renewal you'll need to re-trust the new certificate on each device (Step 3 again).
 
 ---
 

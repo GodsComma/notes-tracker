@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# script/test — Run the full test suite.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source script/lib/common.sh
+
+USAGE="Usage: script/test [--fast] [--e2e] [go test packages...]
+
+Runs go vet, go test, and the client TypeScript type-check against an
+isolated, throwaway DATA_DIR. Exits non-zero on any failure.
+
+  --fast        Skip script/bootstrap (CI runs it separately).
+  --e2e         Also run the Playwright browser suite (client/e2e): PDF
+                text selection across Chromium (DPR 1 and 2) and Firefox.
+  packages...   Forwarded to go vet / go test (e.g. ./server/handlers/...).
+                When given, the client type-check is skipped."
+handle_help "$@"
+
+FAST=false
+E2E=false
+PKGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --fast) FAST=true ;;
+        --e2e)  E2E=true ;;
+        -*) die "Unknown flag: $arg (see --help)" ;;
+        *) PKGS+=("$arg") ;;
+    esac
+done
+
+if ! $FAST; then
+    if $E2E; then script/bootstrap --e2e; else script/bootstrap; fi
+fi
+
+# Isolated environment — never touch the developer's real data.
+export APP_ENV=test
+export JWT_SECRET=test-secret
+DATA_DIR=$(mktemp -d "${TMPDIR:-/tmp}/notes-test.XXXXXX")
+export DATA_DIR
+trap 'rm -rf "$DATA_DIR"' EXIT
+
+if [[ ${#PKGS[@]} -eq 0 ]]; then
+    GO_PKGS=(./...)
+else
+    GO_PKGS=("${PKGS[@]}")
+fi
+
+step "go vet"
+go vet -tags fts5 "${GO_PKGS[@]}"
+success "go vet passed."
+
+step "go test"
+go test -tags fts5 "${GO_PKGS[@]}"
+success "go test passed."
+
+if [[ ${#PKGS[@]} -eq 0 ]]; then
+    step "Client type-check (vue-tsc)"
+    # Must target tsconfig.app.json explicitly: the root tsconfig.json is a
+    # solution file ("files": [] + references), so plain `vue-tsc --noEmit`
+    # type-checks nothing.
+    (cd client && npx --no-install vue-tsc --noEmit -p tsconfig.app.json)
+    success "Type-check passed."
+fi
+
+if $E2E; then
+    step "Browser tests (Playwright)"
+    # The suite starts its own Vite server on :5199; it needs no backend.
+    (cd client && npx playwright test)
+    success "Browser tests passed."
+fi
+
+echo ""
+success "All checks passed."

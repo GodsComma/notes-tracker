@@ -3,8 +3,10 @@ bin/
 dist/
 client/dist/
 client/node_modules/
-Spec/
 *.db
 *.db-shm
 *.db-wal
 .env
+data.bak-*/
+client/test-results/
+client/playwright-report/

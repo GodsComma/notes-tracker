@@ -1,0 +1,53 @@
+[
+ {
+  "zoom": 1,
+  "anchor": {
+   "anchorId": "legacy-1",
+   "page": 1,
+   "text": "t ut labore et do",
+   "rects": [
+    {
+     "x": 135.11614990234375,
+     "y": 137.203125,
+     "w": 111.17193603515625,
+     "h": 18
+    }
+   ],
+   "color": "yellow"
+  }
+ },
+ {
+  "zoom": 1.5,
+  "anchor": {
+   "anchorId": "legacy-1.5",
+   "page": 1,
+   "text": "abore et dolore magna",
+   "rects": [
+    {
+     "x": 134.220458984375,
+     "y": 137.53125,
+     "w": 110.28662109375,
+     "h": 12
+    }
+   ],
+   "color": "yellow"
+  }
+ },
+ {
+  "zoom": 2,
+  "anchor": {
+   "anchorId": "legacy-2",
+   "page": 1,
+   "text": "e et dolore magna aliqua enim",
+   "rects": [
+    {
+     "x": 134.66310119628906,
+     "y": 137.703125,
+     "w": 109.83619689941406,
+     "h": 9
+    }
+   ],
+   "color": "yellow"
+  }
+ }
+]
