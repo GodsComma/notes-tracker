@@ -121,10 +121,12 @@ async function migrateLocalStorage() {
     type OldSession = { date: string; durationSec: number; attachmentId: number; filename: string; completed: boolean }
     const old = JSON.parse(raw) as OldSession[]
     await Promise.all(old
-      .filter(s => s.duration_sec >= 60)
+      // useDeepRead wrote `durationSec`; reading `duration_sec` here dropped
+      // every session and then deleted the localStorage copy.
+      .filter(s => s.durationSec >= 60)
       .map(s => api.focusSessions.log({
         date: s.date,
-        duration_sec: s.duration_sec,
+        duration_sec: s.durationSec,
         attachment_id: s.attachmentId,
         filename: s.filename,
         completed: s.completed
@@ -200,7 +202,7 @@ const peakDay = computed(() => {
 const countableSessions = computed(() => filtered.value.filter(s => s.duration_sec >= 180))
 const completedSessions = computed(() => countableSessions.value.filter(s => s.completed))
 
-const statCards = computed(() => [
+const statCards = computed<{ label: string; value: string; title?: string }[]>(() => [
   { label: 'Total time',    value: fmtDuration(totalSec.value) },
   { label: 'Active days',   value: String(activeDays.value) },
   { label: 'Cur. streak',   value: streaks.value.current + 'd' },

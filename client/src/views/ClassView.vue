@@ -451,7 +451,7 @@ let sortable: Sortable | null = null
 // View state — synced to ?view= query param
 type ClassViewTab = 'list' | 'calendar' | 'files' | 'grades'
 const view = ref<ClassViewTab>(
-  (['calendar', 'files', 'grades'] as const).includes(route.query.view as ClassViewTab)
+  (['calendar', 'files', 'grades'] as readonly ClassViewTab[]).includes(route.query.view as ClassViewTab)
     ? (route.query.view as ClassViewTab)
     : 'list'
 )
